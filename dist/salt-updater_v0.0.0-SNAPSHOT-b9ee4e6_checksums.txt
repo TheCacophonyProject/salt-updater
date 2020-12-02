@@ -1,0 +1,2 @@
+8dd812201d8dc38d6b588a00b46edccacf9ad1ceaae7ae01f14d2a93f2bba26e  salt-updater_v0.0.0-SNAPSHOT-b9ee4e6_linux_armv7.tar.gz
+dfd48764238caceca328dc145342720ec4d74dcfcbcf80836f16c97af631b9bd  salt-updater_v0.0.0-SNAPSHOT-b9ee4e6_arm.deb

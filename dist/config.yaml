@@ -1,0 +1,79 @@
+project_name: salt-updater
+release:
+  github:
+    owner: TheCacophonyProject
+    name: salt-updater
+  name_template: '{{.Tag}}'
+scoop:
+  name: salt-updater
+  commit_author:
+    name: goreleaserbot
+    email: goreleaser@carlosbecker.com
+builds:
+- id: salt-updater
+  goos:
+  - linux
+  goarch:
+  - arm
+  goarm:
+  - "7"
+  targets:
+  - linux_arm_7
+  dir: .
+  main: ./cmd/salt-updater
+  ldflags:
+  - -s -w -X main.version={{.Version}}
+  binary: salt-updater
+  lang: go
+archives:
+- id: default
+  builds:
+  - salt-updater
+  name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm
+    }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}'
+  format: tar.gz
+  files:
+  - licence*
+  - LICENCE*
+  - license*
+  - LICENSE*
+  - readme*
+  - README*
+  - changelog*
+  - CHANGELOG*
+nfpms:
+- file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}'
+  package_name: salt-updater
+  files:
+    _release/org.cacophony.salt-updater.conf: /etc/dbus-1/system.d/org.cacophony.salt-updater.conf
+    _release/salt-updater.service: /etc/systemd/system/salt-updater.service
+  scripts:
+    postinstall: _release/postinstall.sh
+  id: default
+  builds:
+  - salt-updater
+  formats:
+  - deb
+  vendor: The Cacophony Project
+  homepage: http://cacophony.org.nz/
+  maintainer: Cacophony Developers <coredev@cacophony.org.nz>
+  description: Controls the salt udpates
+  license: GPL v3.0
+  bindir: /usr/bin
+snapshot:
+  name_template: '{{ .Tag }}-SNAPSHOT-{{ .ShortCommit }}'
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  algorithm: sha256
+dist: dist
+env_files:
+  github_token: ~/.config/goreleaser/github_token
+  gitlab_token: ~/.config/goreleaser/gitlab_token
+  gitea_token: ~/.config/goreleaser/gitea_token
+source:
+  name_template: '{{ .ProjectName }}-{{ .Version }}'
+  format: tar.gz
+github_urls:
+  download: https://github.com
+gitlab_urls:
+  download: https://gitlab.com
