@@ -22,9 +22,12 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os/exec"
 	"runtime"
+	"time"
 
+	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
 )
 
@@ -56,48 +59,56 @@ func main() {
 	if err := runMain(); err != nil {
 		log.Fatal(err)
 	}
-	// If no error then keep the background goroutines running.
-	runtime.Goexit()
-}
-
-func runMain() error {
-	args := procArgs()
-	log.Printf("running version: %s", version)
-
-	salt := &saltUpdater{}
-
-	if args.RunDbus {
-		return startService(salt)
-	}
-
-	return nil
 }
 
 type saltUpdater struct {
-	Running           bool
-	LastUpdateOut     string
-	LastUpdateSuccess bool
-	LastUpdateChannel string
+	state *saltrequester.SaltState
+}
+
+func runMain() error {
+	rand.Seed(time.Now().UnixNano())
+	args := procArgs()
+	log.Printf("running version: %s", version)
+
+	salt := &saltUpdater{
+		state: &saltrequester.SaltState{}, //TODO Read in last
+	}
+
+	if args.RunDbus {
+		if err := startService(salt); err != nil {
+			return err
+		}
+		runtime.Goexit()
+		return nil
+	}
+
+	minutes := rand.Intn(args.RandomDelayMinutes + 1)
+	log.Printf("waiting %v minutes before running salt udpate\n", minutes)
+	time.Sleep(time.Duration(minutes) * time.Minute)
+
+	log.Println("calling salt update")
+	return saltrequester.Run()
 }
 
 func (s *saltUpdater) runUpdate() {
-	if s.Running {
+	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
 		log.Println("starting salt update")
-		s.Running = true
-		out, err := exec.Command("salt-call", "test.ping").Output()
-		s.Running = false
-		s.LastUpdateSuccess = err == nil
-		s.LastUpdateOut = string(out)
-		s.LastUpdateChannel = "TODO"
-		saltJSON, err := json.Marshal(*s)
+		s.state.RunningUpdate = true
+		out, err := exec.Command("salt-call", "test.ping").Output() //TODO change from ping to state.apply
+		log.Println("finished salt update")
+		s.state.RunningUpdate = false
+		s.state.LastUpdateSuccess = err == nil
+		s.state.LastUpdateOut = string(out)
+		s.state.LastUpdateChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
+		saltStateJSON, err := json.Marshal(*s.state)
 		if err != nil {
 			log.Printf("failed to marshal saltUpdater: %v\n", err)
 			return
 		}
-		err = ioutil.WriteFile(saltUpdateFile, saltJSON, 0644)
+		err = ioutil.WriteFile(saltUpdateFile, saltStateJSON, 0644)
 		if err != nil {
 			log.Printf("failed to save salt JSON to file: %v\n", err)
 		}

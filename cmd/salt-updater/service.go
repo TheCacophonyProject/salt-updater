@@ -52,7 +52,7 @@ func genIntrospectable(v interface{}) introspect.Introspectable {
 
 //IsRunning will return true if a salt update is currently running
 func (s service) IsRunning() (bool, *dbus.Error) {
-	return s.saltUpdater.Running, nil
+	return s.saltUpdater.state.RunningUpdate, nil
 }
 
 //Run will start a salt udpate if one is not already running
@@ -63,7 +63,7 @@ func (s service) Run() *dbus.Error {
 
 //State will get the current state of the salt update
 func (s service) State() ([]byte, *dbus.Error) {
-	saltJSON, err := json.Marshal(s.saltUpdater)
+	saltJSON, err := json.Marshal(s.saltUpdater.state)
 	if err != nil {
 		return nil, makeDbusError("State", err)
 	}
