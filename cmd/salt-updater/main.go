@@ -66,20 +66,13 @@ type saltUpdater struct {
 }
 
 func runMain() error {
+	log.SetFlags(0)
 	rand.Seed(time.Now().UnixNano())
 	args := procArgs()
 	log.Printf("running version: %s", version)
 
-	salt := &saltUpdater{
-		state: &saltrequester.SaltState{}, //TODO Read in last
-	}
-
 	if args.RunDbus {
-		if err := startService(salt); err != nil {
-			return err
-		}
-		runtime.Goexit()
-		return nil
+		return runDbus()
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
@@ -88,6 +81,28 @@ func runMain() error {
 
 	log.Println("calling salt update")
 	return saltrequester.Run()
+}
+
+func runDbus() error {
+	//Read in previoue state
+	saltState := &saltrequester.SaltState{}
+	data, err := ioutil.ReadFile(saltUpdateFile)
+	if err != nil {
+		log.Printf("error reading previous salt state: %v", err)
+	} else if err := json.Unmarshal(data, saltState); err != nil {
+		log.Printf("error loading previous salt state: %v", err)
+	} else {
+		log.Printf("Previous salt state: %+v", *saltState)
+	}
+
+	salt := &saltUpdater{
+		state: saltState,
+	}
+	if err := startService(salt); err != nil {
+		return err
+	}
+	runtime.Goexit()
+	return nil
 }
 
 func (s *saltUpdater) runUpdate() {
