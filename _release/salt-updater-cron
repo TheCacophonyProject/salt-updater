@@ -1,0 +1,2 @@
+#Run update every night at 23:00. By default salt-updater will wait between 0 and 120 minutes before running the update
+0 23 * * * root /usr/bin/salt-updater

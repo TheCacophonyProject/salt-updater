@@ -29,6 +29,7 @@ nfpms:
   bindir: /usr/bin
   files:
     "_release/salt-updater.service": "/etc/systemd/system/salt-updater.service"
+    "_release/salt-updater-cron": "/etc/cron.d/salt-updater"
     "_release/org.cacophony.salt-updater.conf": "/etc/dbus-1/system.d/org.cacophony.salt-updater.conf"
   scripts:
         postinstall: "_release/postinstall.sh"
