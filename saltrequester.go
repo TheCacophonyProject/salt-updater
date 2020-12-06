@@ -16,6 +16,7 @@ const (
 //SaltState holds info of the current state of salt
 type SaltState struct {
 	RunningUpdate   bool
+	RunningArgs     []string
 	LastCallOut     string
 	LastCallSuccess bool
 	LastCallChannel string

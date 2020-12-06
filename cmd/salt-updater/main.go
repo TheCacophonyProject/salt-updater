@@ -20,6 +20,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -82,6 +83,15 @@ func runMain() error {
 		return saltrequester.RunPing()
 	}
 
+	if args.State {
+		state, err := saltrequester.State()
+		if err != nil {
+			return fmt.Errorf("failed to get salt state, %v", err)
+		}
+		log.Printf("salt state:\n%+v\n", *state)
+		return nil
+	}
+
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
 	log.Printf("waiting %v minutes before running salt udpate\n", minutes)
 	time.Sleep(time.Duration(minutes) * time.Minute)
@@ -117,11 +127,13 @@ func (s *saltUpdater) runSaltCall(args []string) {
 		return
 	}
 	go func(s *saltUpdater) {
-		log.Println("starting salt call")
+		log.Printf("starting salt call: %v", args)
 		s.state.RunningUpdate = true
+		s.state.RunningArgs = args
 		out, err := exec.Command("salt-call", args...).Output()
-		log.Println("finished salt call")
 		s.state.RunningUpdate = false
+		s.state.RunningArgs = nil
+		log.Println("finished salt call")
 		s.state.LastCallSuccess = err == nil
 		s.state.LastCallOut = string(out)
 		s.state.LastCallChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
