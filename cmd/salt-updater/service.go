@@ -55,9 +55,15 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 	return s.saltUpdater.state.RunningUpdate, nil
 }
 
-//Run will start a salt udpate if one is not already running
-func (s service) Run() *dbus.Error {
-	s.saltUpdater.runUpdate()
+//RunUpdate will start a salt udpate if one is not already running
+func (s service) RunUpdate() *dbus.Error {
+	s.saltUpdater.runSaltCall([]string{"state.apply"})
+	return nil
+}
+
+//RunPing will send a test ping to the salt server
+func (s service) RunPing() *dbus.Error {
+	s.saltUpdater.runSaltCall([]string{"test.ping"})
 	return nil
 }
 

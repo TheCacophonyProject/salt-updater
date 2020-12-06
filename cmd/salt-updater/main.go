@@ -38,7 +38,9 @@ const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
 //Args app arguments
 type Args struct {
 	RunDbus            bool `arg:"--run-dbus" help:"Run the dbus service."`
-	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."` //TODO
+	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
+	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
+	State              bool `arg:"--state" help:"Print out the current state of the salt update"`
 }
 
 //Version return version of app
@@ -75,12 +77,17 @@ func runMain() error {
 		return runDbus()
 	}
 
+	if args.Ping {
+		log.Println("calling salt ping")
+		return saltrequester.RunPing()
+	}
+
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
 	log.Printf("waiting %v minutes before running salt udpate\n", minutes)
 	time.Sleep(time.Duration(minutes) * time.Minute)
 
 	log.Println("calling salt update")
-	return saltrequester.Run()
+	return saltrequester.RunUpdate()
 }
 
 func runDbus() error {
@@ -105,19 +112,20 @@ func runDbus() error {
 	return nil
 }
 
-func (s *saltUpdater) runUpdate() {
+func (s *saltUpdater) runSaltCall(args []string) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		log.Println("starting salt update")
+		log.Println("starting salt call")
 		s.state.RunningUpdate = true
-		out, err := exec.Command("salt-call", "test.ping").Output() //TODO change from ping to state.apply
-		log.Println("finished salt update")
+		out, err := exec.Command("salt-call", args...).Output()
+		log.Println("finished salt call")
 		s.state.RunningUpdate = false
-		s.state.LastUpdateSuccess = err == nil
-		s.state.LastUpdateOut = string(out)
-		s.state.LastUpdateChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
+		s.state.LastCallSuccess = err == nil
+		s.state.LastCallOut = string(out)
+		s.state.LastCallChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
+		s.state.LastCallArgs = args
 		saltStateJSON, err := json.Marshal(*s.state)
 		if err != nil {
 			log.Printf("failed to marshal saltUpdater: %v\n", err)

@@ -15,10 +15,11 @@ const (
 
 //SaltState holds info of the current state of salt
 type SaltState struct {
-	RunningUpdate     bool
-	LastUpdateOut     string
-	LastUpdateSuccess bool
-	LastUpdateChannel string
+	RunningUpdate   bool
+	LastCallOut     string
+	LastCallSuccess bool
+	LastCallChannel string
+	LastCallArgs    []string
 }
 
 //IsRunning will reutrn true if a salt udpate is running
@@ -34,13 +35,22 @@ func IsRunning() (bool, error) {
 	return false, nil
 }
 
-//Run will run a salt update if one is not already running
-func Run() error {
+//RunUpdate will run a salt update if one is not already running
+func RunUpdate() error {
 	obj, err := getDbusObj()
 	if err != nil {
 		return err
 	}
-	return obj.Call(methodBase+".Run", 0).Store()
+	return obj.Call(methodBase+".RunUpdate", 0).Store()
+}
+
+//RunPing will ping the salt server if a salt call is not already running
+func RunPing() error {
+	obj, err := getDbusObj()
+	if err != nil {
+		return err
+	}
+	return obj.Call(methodBase+".RunPing", 0).Store()
 }
 
 //State will return the state of the salt update
