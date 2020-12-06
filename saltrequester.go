@@ -23,7 +23,7 @@ type SaltState struct {
 	LastCallArgs    []string
 }
 
-//IsRunning will reutrn true if a salt udpate is running
+//IsRunning will return true if a salt update is running
 func IsRunning() (bool, error) {
 	obj, err := getDbusObj()
 	if err != nil {

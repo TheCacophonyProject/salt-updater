@@ -93,7 +93,7 @@ func runMain() error {
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
-	log.Printf("waiting %v minutes before running salt udpate\n", minutes)
+	log.Printf("waiting %v minutes before running salt update\n", minutes)
 	time.Sleep(time.Duration(minutes) * time.Minute)
 
 	log.Println("calling salt update")
@@ -101,7 +101,7 @@ func runMain() error {
 }
 
 func runDbus() error {
-	//Read in previoue state
+	//Read in previous state
 	saltState := &saltrequester.SaltState{}
 	data, err := ioutil.ReadFile(saltUpdateFile)
 	if err != nil {

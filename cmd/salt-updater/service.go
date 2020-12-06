@@ -55,7 +55,7 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 	return s.saltUpdater.state.RunningUpdate, nil
 }
 
-//RunUpdate will start a salt udpate if one is not already running
+//RunUpdate will start a salt update if one is not already running
 func (s service) RunUpdate() *dbus.Error {
 	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed"})
 	return nil
