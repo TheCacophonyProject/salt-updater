@@ -108,8 +108,6 @@ func runDbus() error {
 		log.Printf("error reading previous salt state: %v", err)
 	} else if err := json.Unmarshal(data, saltState); err != nil {
 		log.Printf("error loading previous salt state: %v", err)
-	} else {
-		log.Printf("Previous salt state: %+v", *saltState)
 	}
 
 	salt := &saltUpdater{
