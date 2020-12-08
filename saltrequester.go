@@ -54,6 +54,24 @@ func RunPing() error {
 	return obj.Call(methodBase+".RunPing", 0).Store()
 }
 
+//RunPingSync will make a synchronous ping call to the server
+func RunPingSync() (*SaltState, error) {
+	obj, err := getDbusObj()
+	if err != nil {
+		return nil, err
+	}
+	stateBytes := []byte{}
+	if err := obj.Call(methodBase+".RunPingSync", 0).Store(&stateBytes); err != nil {
+		return nil, err
+	}
+	state := &SaltState{}
+	if err := json.Unmarshal(stateBytes, state); err != nil {
+		log.Println("failed to unmarshal SaltState")
+		return nil, err
+	}
+	return state, nil
+}
+
 //State will return the state of the salt update
 func State() (*SaltState, error) {
 	obj, err := getDbusObj()
@@ -61,7 +79,9 @@ func State() (*SaltState, error) {
 		return nil, err
 	}
 	stateBytes := []byte{}
-	obj.Call(methodBase+".State", 0).Store(&stateBytes)
+	if err := obj.Call(methodBase+".State", 0).Store(&stateBytes); err != nil {
+		return nil, err
+	}
 	state := &SaltState{}
 	if err := json.Unmarshal(stateBytes, state); err != nil {
 		log.Println("failed to unmarshal SaltState")
