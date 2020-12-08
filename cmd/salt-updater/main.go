@@ -20,6 +20,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -120,30 +121,38 @@ func runDbus() error {
 	return nil
 }
 
+func (s *saltUpdater) runSaltCallSync(args []string) (*saltrequester.SaltState, error) {
+	if s.state.RunningUpdate {
+		return nil, errors.New("failed to run salt call as one is already running")
+	}
+	s.state.RunningUpdate = true
+	log.Printf("starting salt call: %v", args)
+	s.state.RunningArgs = args
+	out, err := exec.Command("salt-call", args...).Output()
+	s.state.RunningUpdate = false
+	s.state.RunningArgs = nil
+	log.Println("finished salt call")
+	s.state.LastCallSuccess = err == nil
+	s.state.LastCallOut = string(out)
+	s.state.LastCallChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
+	s.state.LastCallArgs = args
+	saltStateJSON, err := json.Marshal(*s.state)
+	if err != nil {
+		log.Printf("failed to marshal saltUpdater: %v\n", err)
+		return nil, err
+	}
+	err = ioutil.WriteFile(saltUpdateFile, saltStateJSON, 0644)
+	if err != nil {
+		log.Printf("failed to save salt JSON to file: %v\n", err)
+	}
+	return s.state, nil
+}
+
 func (s *saltUpdater) runSaltCall(args []string) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		log.Printf("starting salt call: %v", args)
-		s.state.RunningUpdate = true
-		s.state.RunningArgs = args
-		out, err := exec.Command("salt-call", args...).Output()
-		s.state.RunningUpdate = false
-		s.state.RunningArgs = nil
-		log.Println("finished salt call")
-		s.state.LastCallSuccess = err == nil
-		s.state.LastCallOut = string(out)
-		s.state.LastCallChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
-		s.state.LastCallArgs = args
-		saltStateJSON, err := json.Marshal(*s.state)
-		if err != nil {
-			log.Printf("failed to marshal saltUpdater: %v\n", err)
-			return
-		}
-		err = ioutil.WriteFile(saltUpdateFile, saltStateJSON, 0644)
-		if err != nil {
-			log.Printf("failed to save salt JSON to file: %v\n", err)
-		}
+		s.runSaltCallSync(args)
 	}(s)
 }

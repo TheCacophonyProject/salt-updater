@@ -67,6 +67,15 @@ func (s service) RunPing() *dbus.Error {
 	return nil
 }
 
+func (s service) RunPingSync() ([]byte, *dbus.Error) {
+	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"})
+	saltJSON, err := json.Marshal(state)
+	if err != nil {
+		return nil, makeDbusError("RunPingSync", err)
+	}
+	return saltJSON, nil
+}
+
 //State will get the current state of the salt update
 func (s service) State() ([]byte, *dbus.Error) {
 	saltJSON, err := json.Marshal(s.saltUpdater.state)
