@@ -15,12 +15,12 @@ const (
 
 //SaltState holds info of the current state of salt
 type SaltState struct {
-	RunningUpdate   bool
-	RunningArgs     []string
-	LastCallOut     string
-	LastCallSuccess bool
-	LastCallChannel string
-	LastCallArgs    []string
+	RunningUpdate     bool
+	RunningArgs       []string
+	LastCallOut       string
+	LastCallSuccess   bool
+	LastCallNodegroup string
+	LastCallArgs      []string
 }
 
 //IsRunning will return true if a salt update is running

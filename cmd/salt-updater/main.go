@@ -134,7 +134,12 @@ func (s *saltUpdater) runSaltCallSync(args []string) (*saltrequester.SaltState, 
 	log.Println("finished salt call")
 	s.state.LastCallSuccess = err == nil
 	s.state.LastCallOut = string(out)
-	s.state.LastCallChannel = "TODO" //TODO one of: pi-dev, pi-test, pi-prod
+	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	if err != nil {
+		s.state.LastCallNodegroup = "error reading nodegroup"
+	} else {
+		s.state.LastCallNodegroup = string(nodegroupOut)
+	}
 	s.state.LastCallArgs = args
 	saltStateJSON, err := json.Marshal(*s.state)
 	if err != nil {
