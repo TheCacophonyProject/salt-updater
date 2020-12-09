@@ -26,9 +26,13 @@ import (
 	"log"
 	"math/rand"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/TheCacophonyProject/event-reporter/v3/eventclient"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
 )
@@ -121,7 +125,7 @@ func runDbus() error {
 	return nil
 }
 
-func (s *saltUpdater) runSaltCallSync(args []string) (*saltrequester.SaltState, error) {
+func (s *saltUpdater) runSaltCallSync(args []string, makeEvent bool) (*saltrequester.SaltState, error) {
 	if s.state.RunningUpdate {
 		return nil, errors.New("failed to run salt call as one is already running")
 	}
@@ -138,7 +142,7 @@ func (s *saltUpdater) runSaltCallSync(args []string) (*saltrequester.SaltState, 
 	if err != nil {
 		s.state.LastCallNodegroup = "error reading nodegroup"
 	} else {
-		s.state.LastCallNodegroup = string(nodegroupOut)
+		s.state.LastCallNodegroup = strings.TrimSpace(string(nodegroupOut)) //Removes newline character
 	}
 	s.state.LastCallArgs = args
 	saltStateJSON, err := json.Marshal(*s.state)
@@ -150,14 +154,86 @@ func (s *saltUpdater) runSaltCallSync(args []string) (*saltrequester.SaltState, 
 	if err != nil {
 		log.Printf("failed to save salt JSON to file: %v\n", err)
 	}
+	if makeEvent {
+		event, err := makeEventFromState(*s.state)
+		if err != nil {
+			return nil, err
+		}
+		return s.state, eventclient.AddEvent(*event)
+	}
 	return s.state, nil
 }
 
-func (s *saltUpdater) runSaltCall(args []string) {
+func (s *saltUpdater) runSaltCall(args []string, makeEvent bool) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		s.runSaltCallSync(args)
+		s.runSaltCallSync(args, makeEvent)
 	}(s)
+}
+
+func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, error) {
+
+	outLines := strings.Split(state.LastCallOut, "\n")
+
+	var succeeded, changed, failed, runTime float64
+
+	for _, line := range outLines {
+		if strings.HasPrefix(line, "Succeeded:") {
+			numbers := extractNumbers(line)
+			if len(numbers) != 2 {
+				return nil, errors.New("failed to parse output of salt update")
+			}
+			succeeded = numbers[0]
+			changed = numbers[1]
+		}
+		if strings.HasPrefix(line, "Failed:") {
+			numbers := extractNumbers(line)
+			if len(numbers) != 1 {
+				return nil, errors.New("failed to parse output of salt update")
+			}
+			failed = numbers[0]
+		}
+		if strings.HasPrefix(line, "Total run time:") {
+			numbers := extractNumbers(line)
+			if len(numbers) != 1 {
+				return nil, errors.New("failed to parse output of salt update")
+			}
+			runTime = numbers[0]
+		}
+	}
+
+	details := map[string]interface{}{
+		"changed":   changed,
+		"failed":    failed,
+		"succeeded": succeeded,
+		"nodegroup": state.LastCallNodegroup,
+		"success":   state.LastCallSuccess,
+		"args":      state.LastCallArgs,
+	}
+
+	// if some failed add more details
+	if failed > 0 || !state.LastCallSuccess {
+		details["out"] = state.LastCallOut
+		details["runTime"] = runTime
+	}
+
+	event := &eventclient.Event{
+		Timestamp: time.Now(),
+		Details:   details,
+		Type:      "salt-update",
+	}
+	return event, nil
+}
+
+func extractNumbers(str string) []float64 {
+	re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
+	numberStrings := re.FindAllString(str, -1)
+	results := make([]float64, len(numberStrings))
+	for i, numberString := range numberStrings {
+		n, _ := strconv.ParseFloat(numberString, 64)
+		results[i] = n
+	}
+	return results
 }
