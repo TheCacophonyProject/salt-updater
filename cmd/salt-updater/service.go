@@ -57,18 +57,18 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 
 //RunUpdate will start a salt update if one is not already running
 func (s service) RunUpdate() *dbus.Error {
-	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed"})
+	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true)
 	return nil
 }
 
 //RunPing will send a test ping to the salt server
 func (s service) RunPing() *dbus.Error {
-	s.saltUpdater.runSaltCall([]string{"test.ping"})
+	s.saltUpdater.runSaltCall([]string{"test.ping"}, false)
 	return nil
 }
 
 func (s service) RunPingSync() ([]byte, *dbus.Error) {
-	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"})
+	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false)
 	saltJSON, err := json.Marshal(state)
 	if err != nil {
 		return nil, makeDbusError("RunPingSync", err)
