@@ -90,6 +90,26 @@ func State() (*SaltState, error) {
 	return state, nil
 }
 
+func SetAutoUpdate(autoUpdate bool) error {
+	obj, err := getDbusObj()
+	if err != nil {
+		return err
+	}
+	return obj.Call(methodBase+".SetAutoUpdate", 0, autoUpdate).Store()
+}
+
+func IsAutoUpdateOn() (bool, error) {
+	obj, err := getDbusObj()
+	if err != nil {
+		return false, err
+	}
+	var autoupdate bool
+	if err := obj.Call(methodBase+".IsAutoUpdateOn", 0).Store(&autoupdate); err != nil {
+		return false, err
+	}
+	return autoupdate, nil
+}
+
 func getDbusObj() (dbus.BusObject, error) {
 	conn, err := dbus.SystemBus()
 	if err != nil {
@@ -97,12 +117,4 @@ func getDbusObj() (dbus.BusObject, error) {
 	}
 	obj := conn.Object(dbusDest, dbusPath)
 	return obj, nil
-}
-
-func sendOnRequest() error {
-	obj, err := getDbusObj()
-	if err != nil {
-		return err
-	}
-	return obj.Call(methodBase+".StayOn", 0).Store()
 }

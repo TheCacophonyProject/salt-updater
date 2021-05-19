@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -40,6 +41,10 @@ import (
 var version = "<not set>"
 
 const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
+const autoUpdateCronPath = "/etc/cron.d/salt-updater"
+const autoUpdateCronString = `#Run update every night at 23:00. By default salt-updater will wait between 0 and 120 minutes before running the update
+0 23 * * * root /usr/bin/salt-updater
+`
 
 //Args app arguments
 type Args struct {
@@ -47,6 +52,8 @@ type Args struct {
 	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
 	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
 	State              bool `arg:"--state" help:"Print out the current state of the salt update"`
+	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables cron job to run update every night."`
+	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables cron job to run update every night."`
 }
 
 //Version return version of app
@@ -95,6 +102,14 @@ func runMain() error {
 		}
 		log.Printf("salt state:\n%+v\n", *state)
 		return nil
+	}
+
+	if args.EnableAutoUpdate {
+		return enableAutoUpdate()
+	}
+
+	if args.DisableAutoUpdate {
+		return disableAutoUpdate()
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
@@ -236,4 +251,32 @@ func extractNumbers(str string) []float64 {
 		results[i] = n
 	}
 	return results
+}
+
+func enableAutoUpdate() error {
+	err := ioutil.WriteFile(autoUpdateCronPath, []byte(autoUpdateCronString), 0600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("auto update is enabled")
+	return nil
+}
+
+func disableAutoUpdate() error {
+	err := os.Remove(autoUpdateCronPath)
+	if os.IsNotExist(err) || err == nil {
+		log.Println("auto update disabled")
+		return nil
+	}
+	return err
+}
+
+func isAutoUpdateOn() (bool, error) {
+	_, err := os.Stat(autoUpdateCronPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }

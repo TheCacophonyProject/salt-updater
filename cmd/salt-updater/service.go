@@ -69,6 +69,9 @@ func (s service) RunPing() *dbus.Error {
 
 func (s service) RunPingSync() ([]byte, *dbus.Error) {
 	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false)
+	if err != nil {
+		return nil, makeDbusError("RunPingSync", err)
+	}
 	saltJSON, err := json.Marshal(state)
 	if err != nil {
 		return nil, makeDbusError("RunPingSync", err)
@@ -85,9 +88,30 @@ func (s service) State() ([]byte, *dbus.Error) {
 	return saltJSON, nil
 }
 
+func (s service) SetAutoUpdate(autoUpdate bool) *dbus.Error {
+	var err error
+	if autoUpdate {
+		err = enableAutoUpdate()
+	} else {
+		err = disableAutoUpdate()
+	}
+	if err != nil {
+		makeDbusError("SetAutoUpdate", err)
+	}
+	return nil
+}
+
+func (s service) IsAutoUpdateOn() (bool, *dbus.Error) {
+	autoUpdate, err := isAutoUpdateOn()
+	if err != nil {
+		return false, makeDbusError("IsAutoUpdateOn", err)
+	}
+	return autoUpdate, nil
+}
+
 func makeDbusError(name string, err error) *dbus.Error {
 	return &dbus.Error{
-		Name: dbusName + name,
+		Name: dbusName + "." + name,
 		Body: []interface{}{err.Error()},
 	}
 }
