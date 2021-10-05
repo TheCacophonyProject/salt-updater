@@ -27,11 +27,13 @@ nfpms:
   formats:
     - deb
   bindir: /usr/bin
-  files:
-    "_release/salt-updater.service": "/etc/systemd/system/salt-updater.service"
-    "_release/org.cacophony.salt-updater.conf": "/etc/dbus-1/system.d/org.cacophony.salt-updater.conf"
+  contents:
+    - src: _release/salt-updater.service
+      dst: /etc/systemd/system/salt-updater.service
+    - src: _release/org.cacophony.salt-updater.conf
+      dst: /etc/dbus-1/system.d/org.cacophony.salt-updater.conf
   scripts:
-        postinstall: "_release/postinstall.sh"
+    postinstall: "_release/postinstall.sh"
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
