@@ -290,10 +290,20 @@ func (s *saltUpdater) modemConnectedListener() {
 		return
 	}
 	for {
-		switch {
-		case <-modemConnectSignal:
-			log.Println("Modem connected.")
-		}
+		// Empty modemConnectSignal channel so as to not trigger from old signals
+		emptyChannel(modemConnectSignal)
+		<-modemConnectSignal
+		log.Println("Modem connected.")
 		s.runSaltCall([]string{"test.ping"}, false)
+	}
+}
+
+func emptyChannel(ch chan time.Time) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
 	}
 }
