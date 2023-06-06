@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/TheCacophonyProject/event-reporter/v3/eventclient"
+	"github.com/TheCacophonyProject/modemd/modemlistener"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
 )
@@ -133,6 +134,7 @@ func runDbus() error {
 	salt := &saltUpdater{
 		state: saltState,
 	}
+	go salt.modemConnectedListener()
 	if err := startService(salt); err != nil {
 		return err
 	}
@@ -279,4 +281,29 @@ func isAutoUpdateOn() (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *saltUpdater) modemConnectedListener() {
+	modemConnectSignal, err := modemlistener.GetModemConnectedSignalListener()
+	if err != nil {
+		log.Println("Failed to get modem connected signal listener")
+		return
+	}
+	for {
+		// Empty modemConnectSignal channel so as to not trigger from old signals
+		emptyChannel(modemConnectSignal)
+		<-modemConnectSignal
+		log.Println("Modem connected.")
+		s.runSaltCall([]string{"test.ping"}, false)
+	}
+}
+
+func emptyChannel(ch chan time.Time) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
+	}
 }
