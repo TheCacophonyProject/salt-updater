@@ -47,7 +47,7 @@ const autoUpdateCronString = `#Run update every night at 23:00. By default salt-
 0 23 * * * root /usr/bin/salt-updater
 `
 
-//Args app arguments
+// Args app arguments
 type Args struct {
 	RunDbus            bool `arg:"--run-dbus" help:"Run the dbus service."`
 	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
@@ -57,7 +57,7 @@ type Args struct {
 	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables cron job to run update every night."`
 }
 
-//Version return version of app
+// Version return version of app
 func (Args) Version() string {
 	return version
 }
@@ -85,7 +85,13 @@ func runMain() error {
 	log.SetFlags(0)
 	rand.Seed(time.Now().UnixNano())
 	args := procArgs()
-	log.Printf("running version: %s", version)
+	log.Printf("Running version: %s", version)
+
+	// Don't want to run any salt commands before the device is registered as it will set a salt minion_id
+	if _, err := os.Stat("/etc/salt/minion_id"); os.IsNotExist(err) {
+		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
+		return nil
+	}
 
 	if args.RunDbus {
 		return runDbus()
