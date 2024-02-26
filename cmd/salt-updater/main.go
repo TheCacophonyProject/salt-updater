@@ -83,7 +83,6 @@ type saltUpdater struct {
 
 func runMain() error {
 	log.SetFlags(0)
-	rand.Seed(time.Now().UnixNano())
 	args := procArgs()
 	log.Printf("Running version: %s", version)
 
