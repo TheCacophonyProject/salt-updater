@@ -61,7 +61,6 @@ func RunUpdate() error {
 		return nil
 	}
 
-	log.Printf("Running state apply")
 	obj, err := getDbusObj()
 	if err != nil {
 		return err

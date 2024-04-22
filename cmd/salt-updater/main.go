@@ -133,7 +133,6 @@ func runDbus() (*saltrequester.SaltState, error) {
 	if err != nil {
 		return nil, err
 	}
-	//
 	salt := &saltUpdater{
 		state: saltState,
 	}
@@ -141,7 +140,6 @@ func runDbus() (*saltrequester.SaltState, error) {
 	if err := startService(salt); err != nil {
 		return saltState, err
 	}
-	// runtime.Goexit()
 	return saltState, err
 }
 
@@ -183,12 +181,12 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool) (*saltrequ
 	return s.state, nil
 }
 
-func (s *saltUpdater) runSaltCall(args []string, makeEvent bool) {
+func (s *saltUpdater) runSaltCall(args []string, updateCall bool) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		s.runSaltCallSync(args, makeEvent)
+		s.runSaltCallSync(args, updateCall)
 	}(s)
 }
 
