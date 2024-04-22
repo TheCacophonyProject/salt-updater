@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/godbus/dbus"
 	"github.com/godbus/dbus/introspect"
@@ -56,19 +57,19 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 }
 
 // RunUpdate will start a salt update if one is not already running
-func (s service) RunUpdate() *dbus.Error {
-	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true)
+func (s service) RunUpdate(updateTime time.Time) *dbus.Error {
+	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true, updateTime)
 	return nil
 }
 
 // RunPing will send a test ping to the salt server
 func (s service) RunPing() *dbus.Error {
-	s.saltUpdater.runSaltCall([]string{"test.ping"}, false)
+	s.saltUpdater.runSaltCall([]string{"test.ping"}, false, time.Now())
 	return nil
 }
 
 func (s service) RunPingSync() ([]byte, *dbus.Error) {
-	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false)
+	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false, time.Now())
 	if err != nil {
 		return nil, makeDbusError("RunPingSync", err)
 	}

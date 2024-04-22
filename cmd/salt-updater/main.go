@@ -143,7 +143,7 @@ func runDbus() (*saltrequester.SaltState, error) {
 	return saltState, err
 }
 
-func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool) (*saltrequester.SaltState, error) {
+func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime time.Time) (*saltrequester.SaltState, error) {
 	if s.state.RunningUpdate {
 		return nil, errors.New("failed to run salt call as one is already running")
 	}
@@ -156,8 +156,8 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool) (*saltrequ
 	log.Println("finished salt call")
 	s.state.LastCallSuccess = err == nil
 	s.state.LastCallOut = string(out)
-	if updateCall && s.state.LastCallSuccess {
-		s.state.LastUpdate = time.Now()
+	if updateCall && s.state.LastCallSuccess && !updateTime.IsZero() {
+		s.state.LastUpdate = updateTime
 	}
 	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
 	if err != nil {
@@ -181,12 +181,12 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool) (*saltrequ
 	return s.state, nil
 }
 
-func (s *saltUpdater) runSaltCall(args []string, updateCall bool) {
+func (s *saltUpdater) runSaltCall(args []string, updateCall bool, updateTime time.Time) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		s.runSaltCallSync(args, updateCall)
+		s.runSaltCallSync(args, updateCall, updateTime)
 	}(s)
 }
 
@@ -302,7 +302,7 @@ func (s *saltUpdater) modemConnectedListener() {
 		emptyChannel(modemConnectSignal)
 		<-modemConnectSignal
 		log.Println("Modem connected.")
-		s.runSaltCall([]string{"test.ping"}, false)
+		s.runSaltCall([]string{"test.ping"}, false, time.Now())
 	}
 }
 

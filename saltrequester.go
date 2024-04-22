@@ -51,7 +51,7 @@ func IsRunning() (bool, error) {
 
 // RunUpdate will run a salt update if one is not already running
 func RunUpdate() error {
-	updateAvailable, err := updateExists()
+	updateAvailable, updateTime, err := updateExists()
 	if err != nil {
 		log.Printf("Error checking if update exists %v will run salt state", err)
 	}
@@ -65,7 +65,7 @@ func RunUpdate() error {
 	if err != nil {
 		return err
 	}
-	return obj.Call(methodBase+".RunUpdate", 0).Store()
+	return obj.Call(methodBase+".RunUpdate", 0, updateTime).Store()
 }
 
 // RunPing will ping the salt server if a salt call is not already running
@@ -180,7 +180,7 @@ func ReadStateFile() (*SaltState, error) {
 
 // updateExists checks if there has been any git updates since the last update time for this minions nodegroup
 // uses github api to view last commit to the repo
-func updateExists() (bool, error) {
+func updateExists() (bool, time.Time, error) {
 	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
 	nodeGroup := string(nodegroupOut)
 	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
@@ -188,14 +188,14 @@ func updateExists() (bool, error) {
 	if hyphenIndex != -1 {
 		nodeGroup = nodeGroup[hyphenIndex+1:]
 	}
-
+	var updateTime time.Time
 	saltState, _ := ReadStateFile()
 	log.Printf("Checking for updates for saltops %v branch, last update was %v", nodeGroup, saltState.LastUpdate)
 
 	const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
 	u, err := url.Parse(saltrepoURL)
 	if err != nil {
-		return false, err
+		return false, time.Time{}, err
 	}
 	params := url.Values{}
 	params.Add("sha", nodeGroup)
@@ -222,25 +222,28 @@ func updateExists() (bool, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return false, updateTime, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, fmt.Errorf("Bad update status check %v from url %v", resp.StatusCode, u.String())
+		return false, updateTime, fmt.Errorf("Bad update status check %v from url %v", resp.StatusCode, u.String())
 	}
 	body, err := io.ReadAll(resp.Body)
 	var details []interface{}
 	err = json.Unmarshal(body, &details)
 	if err != nil {
-		return false, err
+		return false, updateTime, err
 	}
 	if len(details) == 0 {
 		log.Printf("No updates exists for %v node group", nodegroupOut)
-		return false, nil
+		return false, updateTime, nil
 	}
 	commitDate := details[0].(map[string]interface{})["commit"].(map[string]interface{})["author"].(map[string]interface{})["date"].(string)
 	layout := "2006-01-02T15:04:05Z"
-	t, err := time.Parse(layout, commitDate)
+	updateTime, err = time.Parse(layout, commitDate)
+	if err != nil {
+		return false, updateTime, err
+	}
 
-	return t.After(saltState.LastUpdate), nil
+	return updateTime.After(saltState.LastUpdate), updateTime, nil
 }
