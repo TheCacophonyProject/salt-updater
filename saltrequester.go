@@ -3,15 +3,9 @@ package saltrequester
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"net"
-	"net/http"
-	"net/url"
 	"os"
-	"strings"
 
 	"time"
 
@@ -51,21 +45,11 @@ func IsRunning() (bool, error) {
 
 // RunUpdate will run a salt update if one is not already running
 func RunUpdate() error {
-	updateAvailable, updateTime, err := updateExists()
-	if err != nil {
-		log.Printf("Error checking if update exists %v will run salt state", err)
-	}
-	//if we have an error lets just run salt update
-	if err == nil && !updateAvailable {
-		log.Println("No update available")
-		return nil
-	}
-
 	obj, err := getDbusObj()
 	if err != nil {
 		return err
 	}
-	return obj.Call(methodBase+".RunUpdate", 0, updateTime).Store()
+	return obj.Call(methodBase+".RunUpdate", 0).Store()
 }
 
 // RunPing will ping the salt server if a salt call is not already running
@@ -176,74 +160,4 @@ func ReadStateFile() (*SaltState, error) {
 		log.Printf("error loading previous salt state: %v", err)
 	}
 	return saltState, err
-}
-
-// updateExists checks if there has been any git updates since the last update time for this minions nodegroup
-// uses github api to view last commit to the repo
-func updateExists() (bool, time.Time, error) {
-	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
-	nodeGroup := string(nodegroupOut)
-	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
-	hyphenIndex := strings.Index(nodeGroup, "-")
-	if hyphenIndex != -1 {
-		nodeGroup = nodeGroup[hyphenIndex+1:]
-	}
-	var updateTime time.Time
-	saltState, _ := ReadStateFile()
-	log.Printf("Checking for updates for saltops %v branch, last update was %v", nodeGroup, saltState.LastUpdate)
-
-	const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
-	u, err := url.Parse(saltrepoURL)
-	if err != nil {
-		return false, time.Time{}, err
-	}
-	params := url.Values{}
-	params.Add("sha", nodeGroup)
-	params.Add("per_page", "1")
-
-	u.RawQuery = params.Encode()
-
-	req, err := http.NewRequest("GET", u.String(), nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConns:          5,
-			IdleConnTimeout:       90 * time.Second,
-		},
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, updateTime, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, updateTime, fmt.Errorf("Bad update status check %v from url %v", resp.StatusCode, u.String())
-	}
-	body, err := io.ReadAll(resp.Body)
-	var details []interface{}
-	err = json.Unmarshal(body, &details)
-	if err != nil {
-		return false, updateTime, err
-	}
-	if len(details) == 0 {
-		log.Printf("No updates exists for %v node group", nodegroupOut)
-		return false, updateTime, nil
-	}
-	commitDate := details[0].(map[string]interface{})["commit"].(map[string]interface{})["author"].(map[string]interface{})["date"].(string)
-	layout := "2006-01-02T15:04:05Z"
-	updateTime, err = time.Parse(layout, commitDate)
-	if err != nil {
-		return false, updateTime, err
-	}
-
-	return updateTime.After(saltState.LastUpdate), updateTime, nil
 }
