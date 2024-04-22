@@ -164,6 +164,7 @@ func ReadStateFile() (*SaltState, error) {
 	saltState := &SaltState{}
 
 	if _, err := os.Stat(saltUpdateFile); errors.Is(err, os.ErrNotExist) {
+		saltState.AutoUpdate = true
 		err = WriteStateFile(saltState)
 		if err != nil {
 			return saltState, err

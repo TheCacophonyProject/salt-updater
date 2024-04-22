@@ -41,21 +41,14 @@ import (
 
 var version = "<not set>"
 
-const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
-
-// const autoUpdateCronPath = "/etc/cron.d/salt-updater"
-// const autoUpdateCronString = `#Run update every night at 23:00. By default salt-updater will wait between 0 and 120 minutes before running the update
-// 0 23 * * * root /usr/bin/salt-updater
-// `
-
 // Args app arguments
 type Args struct {
 	RunDbus            bool `arg:"--run-dbus" help:"Run the dbus service."`
 	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
 	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
 	State              bool `arg:"--state" help:"Print out the current state of the salt update"`
-	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables cron job to run update every night."`
-	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables cron job to run update every night."`
+	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables update check on PI boot up"`
+	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables updates on PI boot"`
 }
 
 // Version return version of app
@@ -94,11 +87,13 @@ func runMain() error {
 	}
 
 	if args.RunDbus {
-		var err = runDbus()
+		saltState, err := runDbus()
 		if err != nil {
 			return err
 		}
-		saltrequester.RunUpdate()
+		if saltState.AutoUpdate {
+			saltrequester.RunUpdate()
+		}
 		runtime.Goexit()
 	}
 
@@ -132,19 +127,22 @@ func runMain() error {
 	return saltrequester.RunUpdate()
 }
 
-func runDbus() error {
+func runDbus() (*saltrequester.SaltState, error) {
 	//Read in previous state
-	saltState, _ := saltrequester.ReadStateFile()
+	saltState, err := saltrequester.ReadStateFile()
+	if err != nil {
+		return nil, err
+	}
 	//
 	salt := &saltUpdater{
 		state: saltState,
 	}
 	go salt.modemConnectedListener()
 	if err := startService(salt); err != nil {
-		return err
+		return saltState, err
 	}
 	// runtime.Goexit()
-	return nil
+	return saltState, err
 }
 
 func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool) (*saltrequester.SaltState, error) {
