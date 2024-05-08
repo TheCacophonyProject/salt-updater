@@ -85,7 +85,17 @@ func runMain() error {
 		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
 		// return nil
 	}
-
+	saltState, _ := saltrequester.ReadStateFile()
+	nodegroupOut, _ := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	nodegroup := strings.TrimSpace(string(nodegroupOut))
+	if strings.TrimSpace(saltState.LastCallNodegroup) != nodegroup {
+		log.Println("Node group has changed resetting last update time")
+		saltState = &saltrequester.SaltState{LastCallNodegroup: nodegroup}
+		err := saltrequester.WriteStateFile(saltState)
+		if err != nil {
+			return err
+		}
+	}
 	if args.RunDbus {
 		saltState, err := runDbus()
 		if err != nil {
