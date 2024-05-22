@@ -18,6 +18,15 @@ import (
 	"github.com/godbus/dbus/introspect"
 )
 
+var nodeGroupToBranch = map[string]string{
+	"tc2-dev":  "dev",
+	"tc2-test": "test",
+	"tc2-prod": "prod",
+	"dev-pis":  "dev",
+	"test-pis": "test",
+	"prod-pis": "prod",
+}
+
 const (
 	dbusName = "org.cacophony.saltupdater"
 	dbusPath = "/org/cacophony/saltupdater"
@@ -82,29 +91,31 @@ func (s service) RunUpdate() *dbus.Error {
 // updateExists checks if there has been any git updates since the last update time for this minions nodegroup
 // uses github api to view last commit to the repo
 func UpdateExists() (bool, time.Time, error) {
+
 	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
 	nodeGroup := string(nodegroupOut)
 	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
-	hyphenIndex := strings.Index(nodeGroup, "-")
-	if hyphenIndex != -1 {
-		nodeGroup = nodeGroup[hyphenIndex+1:]
-	}
+	branch, ok := nodeGroupToBranch[nodeGroup]
 	var updateTime time.Time
+
+	if !ok {
+		return false, updateTime, fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodegroupOut)
+	}
 	saltState, _ := saltrequester.ReadStateFile()
-	log.Printf("Checking for updates for saltops %v branch, last update was %v", nodeGroup, saltState.LastUpdate)
+	log.Printf("Checking for updates for saltops %v branch, last update was %v", branch, saltState.LastUpdate)
 
 	const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
 	u, err := url.Parse(saltrepoURL)
 	if err != nil {
-		return false, time.Time{}, err
+		return false, updateTime, err
 	}
 	params := url.Values{}
-	params.Add("sha", nodeGroup)
+	params.Add("sha", branch)
 	params.Add("per_page", "1")
 
 	u.RawQuery = params.Encode()
 
-	req, err := http.NewRequest("GET", u.String(), nil)
+	req, _ := http.NewRequest("GET", u.String(), nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -127,9 +138,13 @@ func UpdateExists() (bool, time.Time, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, updateTime, fmt.Errorf("Bad update status check %v from url %v", resp.StatusCode, u.String())
+		return false, updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, u.String())
 	}
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, updateTime, err
+
+	}
 	var details []interface{}
 	err = json.Unmarshal(body, &details)
 	if err != nil {
@@ -177,12 +192,8 @@ func (s service) State() ([]byte, *dbus.Error) {
 }
 
 func (s service) SetAutoUpdate(autoUpdate bool) *dbus.Error {
-	var err error
-	if autoUpdate {
-		err = enableAutoUpdate()
-	} else {
-		err = disableAutoUpdate()
-	}
+	err := setAutoUpdate(autoUpdate)
+
 	if err != nil {
 		makeDbusError("SetAutoUpdate", err)
 	}

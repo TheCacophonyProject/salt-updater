@@ -27,7 +27,6 @@ type SaltState struct {
 	LastCallNodegroup string
 	LastCallArgs      []string
 	LastUpdate        time.Time
-	AutoUpdate        bool
 }
 
 // IsRunning will return true if a salt update is running
@@ -147,7 +146,6 @@ func ReadStateFile() (*SaltState, error) {
 	saltState := &SaltState{}
 
 	if _, err := os.Stat(saltUpdateFile); errors.Is(err, os.ErrNotExist) {
-		saltState.AutoUpdate = true
 		err = WriteStateFile(saltState)
 		if err != nil {
 			return saltState, err

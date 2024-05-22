@@ -34,12 +34,15 @@ import (
 	"time"
 
 	"github.com/TheCacophonyProject/event-reporter/v3/eventclient"
+	goconfig "github.com/TheCacophonyProject/go-config"
 	"github.com/TheCacophonyProject/modemd/modemlistener"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
 )
 
 var version = "<not set>"
+
+const configDir = goconfig.DefaultConfigDir
 
 // Args app arguments
 type Args struct {
@@ -96,12 +99,21 @@ func runMain() error {
 			return err
 		}
 	}
+	config, err := goconfig.New(configDir)
+	if err != nil {
+		return err
+	}
+	var saltSetup goconfig.Salt
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
+		return err
+	}
+
 	if args.RunDbus {
-		saltState, err := runDbus()
+		_, err := runDbus()
 		if err != nil {
 			return err
 		}
-		if saltState.AutoUpdate {
+		if saltSetup.AutoUpdate {
 			saltrequester.RunUpdate()
 		}
 		runtime.Goexit()
@@ -122,11 +134,11 @@ func runMain() error {
 	}
 
 	if args.EnableAutoUpdate {
-		return enableAutoUpdate()
+		return setAutoUpdate(true)
 	}
 
 	if args.DisableAutoUpdate {
-		return disableAutoUpdate()
+		return setAutoUpdate(false)
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
@@ -265,40 +277,29 @@ func extractNumbers(str string) []float64 {
 	return results
 }
 
-func enableAutoUpdate() error {
-	saltState, err := saltrequester.ReadStateFile()
+func setAutoUpdate(enable bool) error {
+	config, err := goconfig.New(configDir)
 	if err != nil {
 		return err
 	}
-	saltState.AutoUpdate = true
-	err = saltrequester.WriteStateFile(saltState)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("auto update is enabled")
-	return nil
-}
-
-func disableAutoUpdate() error {
-	saltState, err := saltrequester.ReadStateFile()
-	if err != nil {
+	var saltSetup goconfig.Salt
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
 		return err
 	}
-	saltState.AutoUpdate = false
-	err = saltrequester.WriteStateFile(saltState)
-	if os.IsNotExist(err) || err == nil {
-		log.Println("auto update disabled")
-		return nil
-	}
-	return err
+	saltSetup.AutoUpdate = enable
+	return config.Set(goconfig.SaltKey, &saltSetup)
 }
 
 func isAutoUpdateOn() (bool, error) {
-	saltState, err := saltrequester.ReadStateFile()
+	config, err := goconfig.New(configDir)
 	if err != nil {
 		return false, err
 	}
-	return saltState.AutoUpdate, nil
+	var saltSetup goconfig.Salt
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
+		return false, err
+	}
+	return saltSetup.AutoUpdate, nil
 }
 
 func (s *saltUpdater) modemConnectedListener() {
