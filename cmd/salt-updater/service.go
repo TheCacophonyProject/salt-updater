@@ -84,6 +84,7 @@ func (s service) RunUpdate() *dbus.Error {
 		log.Println("No update available")
 		return nil
 	}
+
 	s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true, updateTime)
 	return nil
 }

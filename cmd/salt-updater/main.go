@@ -103,11 +103,11 @@ func runMain() error {
 	if err != nil {
 		return err
 	}
-	var saltSetup goconfig.Salt
+	var saltSetup = goconfig.DefaultSalt()
 	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
 		return err
 	}
-
+	log.Printf("Auto update is %v", saltSetup.AutoUpdate)
 	if args.RunDbus {
 		_, err := runDbus()
 		if err != nil {
@@ -282,7 +282,7 @@ func setAutoUpdate(enable bool) error {
 	if err != nil {
 		return err
 	}
-	var saltSetup goconfig.Salt
+	var saltSetup = goconfig.DefaultSalt()
 	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func isAutoUpdateOn() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var saltSetup goconfig.Salt
+	var saltSetup = goconfig.DefaultSalt()
 	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
 		return false, err
 	}
