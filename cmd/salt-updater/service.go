@@ -89,7 +89,7 @@ func (s service) RunUpdate() *dbus.Error {
 	return nil
 }
 
-// updateExists checks if there has been any git updates since the last update time for this minions nodegroup
+// UpdateExists checks if there has been any git updates since the last update time for this minions nodegroup
 // uses github api to view last commit to the repo
 func UpdateExists() (bool, time.Time, error) {
 
