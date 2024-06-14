@@ -2,7 +2,12 @@ package saltrequester
 
 import (
 	"encoding/json"
+	"errors"
+	"io/ioutil"
 	"log"
+	"os"
+
+	"time"
 
 	"github.com/godbus/dbus"
 )
@@ -13,7 +18,7 @@ const (
 	methodBase = "org.cacophony.saltupdater"
 )
 
-//SaltState holds info of the current state of salt
+// SaltState holds info of the current state of salt
 type SaltState struct {
 	RunningUpdate     bool
 	RunningArgs       []string
@@ -21,9 +26,10 @@ type SaltState struct {
 	LastCallSuccess   bool
 	LastCallNodegroup string
 	LastCallArgs      []string
+	LastUpdate        time.Time
 }
 
-//IsRunning will return true if a salt update is running
+// IsRunning will return true if a salt update is running
 func IsRunning() (bool, error) {
 	obj, err := getDbusObj()
 	if err != nil {
@@ -36,7 +42,7 @@ func IsRunning() (bool, error) {
 	return false, nil
 }
 
-//RunUpdate will run a salt update if one is not already running
+// RunUpdate will run a salt update if one is not already running
 func RunUpdate() error {
 	obj, err := getDbusObj()
 	if err != nil {
@@ -45,7 +51,7 @@ func RunUpdate() error {
 	return obj.Call(methodBase+".RunUpdate", 0).Store()
 }
 
-//RunPing will ping the salt server if a salt call is not already running
+// RunPing will ping the salt server if a salt call is not already running
 func RunPing() error {
 	obj, err := getDbusObj()
 	if err != nil {
@@ -54,7 +60,7 @@ func RunPing() error {
 	return obj.Call(methodBase+".RunPing", 0).Store()
 }
 
-//RunPingSync will make a synchronous ping call to the server
+// RunPingSync will make a synchronous ping call to the server
 func RunPingSync() (*SaltState, error) {
 	obj, err := getDbusObj()
 	if err != nil {
@@ -72,7 +78,7 @@ func RunPingSync() (*SaltState, error) {
 	return state, nil
 }
 
-//State will return the state of the salt update
+// State will return the state of the salt update
 func State() (*SaltState, error) {
 	obj, err := getDbusObj()
 	if err != nil {
@@ -117,4 +123,39 @@ func getDbusObj() (dbus.BusObject, error) {
 	}
 	obj := conn.Object(dbusDest, dbusPath)
 	return obj, nil
+}
+
+const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
+
+// possibly need file locks??
+func WriteStateFile(saltState *SaltState) error {
+
+	saltStateJSON, err := json.Marshal(saltState)
+	if err != nil {
+		log.Printf("failed to marshal saltUpdater: %v\n", err)
+		return err
+	}
+	err = os.WriteFile(saltUpdateFile, saltStateJSON, 0644)
+	if err != nil {
+		log.Printf("failed to save salt JSON to file: %v\n", err)
+	}
+	return err
+
+}
+func ReadStateFile() (*SaltState, error) {
+	saltState := &SaltState{}
+
+	if _, err := os.Stat(saltUpdateFile); errors.Is(err, os.ErrNotExist) {
+		err = WriteStateFile(saltState)
+		if err != nil {
+			return saltState, err
+		}
+	}
+	data, err := ioutil.ReadFile(saltUpdateFile)
+	if err != nil {
+		log.Printf("error reading previous salt state: %v", err)
+	} else if err := json.Unmarshal(data, saltState); err != nil {
+		log.Printf("error loading previous salt state: %v", err)
+	}
+	return saltState, err
 }

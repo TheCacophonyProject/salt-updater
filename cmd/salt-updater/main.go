@@ -19,21 +19,22 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
+	"runtime"
+
+	"log"
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/TheCacophonyProject/event-reporter/v3/eventclient"
+	goconfig "github.com/TheCacophonyProject/go-config"
 	"github.com/TheCacophonyProject/modemd/modemlistener"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
@@ -41,11 +42,7 @@ import (
 
 var version = "<not set>"
 
-const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
-const autoUpdateCronPath = "/etc/cron.d/salt-updater"
-const autoUpdateCronString = `#Run update every night at 23:00. By default salt-updater will wait between 0 and 120 minutes before running the update
-0 23 * * * root /usr/bin/salt-updater
-`
+const configDir = goconfig.DefaultConfigDir
 
 // Args app arguments
 type Args struct {
@@ -53,8 +50,8 @@ type Args struct {
 	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
 	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
 	State              bool `arg:"--state" help:"Print out the current state of the salt update"`
-	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables cron job to run update every night."`
-	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables cron job to run update every night."`
+	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables update check on PI boot up"`
+	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables updates on PI boot"`
 }
 
 // Version return version of app
@@ -89,11 +86,37 @@ func runMain() error {
 	// Don't want to run any salt commands before the device is registered as it will set a salt minion_id
 	if _, err := os.Stat("/etc/salt/minion_id"); os.IsNotExist(err) {
 		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
-		return nil
+		// return nil
 	}
-
+	saltState, _ := saltrequester.ReadStateFile()
+	nodegroupOut, _ := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	nodegroup := strings.TrimSpace(string(nodegroupOut))
+	if strings.TrimSpace(saltState.LastCallNodegroup) != nodegroup {
+		log.Println("Node group has changed resetting last update time")
+		saltState = &saltrequester.SaltState{LastCallNodegroup: nodegroup}
+		err := saltrequester.WriteStateFile(saltState)
+		if err != nil {
+			return err
+		}
+	}
+	config, err := goconfig.New(configDir)
+	if err != nil {
+		return err
+	}
+	var saltSetup = goconfig.DefaultSalt()
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
+		return err
+	}
+	log.Printf("Auto update is %v", saltSetup.AutoUpdate)
 	if args.RunDbus {
-		return runDbus()
+		_, err := runDbus()
+		if err != nil {
+			return err
+		}
+		if saltSetup.AutoUpdate {
+			saltrequester.RunUpdate()
+		}
+		runtime.Goexit()
 	}
 
 	if args.Ping {
@@ -111,11 +134,11 @@ func runMain() error {
 	}
 
 	if args.EnableAutoUpdate {
-		return enableAutoUpdate()
+		return setAutoUpdate(true)
 	}
 
 	if args.DisableAutoUpdate {
-		return disableAutoUpdate()
+		return setAutoUpdate(false)
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
@@ -126,28 +149,23 @@ func runMain() error {
 	return saltrequester.RunUpdate()
 }
 
-func runDbus() error {
+func runDbus() (*saltrequester.SaltState, error) {
 	//Read in previous state
-	saltState := &saltrequester.SaltState{}
-	data, err := ioutil.ReadFile(saltUpdateFile)
+	saltState, err := saltrequester.ReadStateFile()
 	if err != nil {
-		log.Printf("error reading previous salt state: %v", err)
-	} else if err := json.Unmarshal(data, saltState); err != nil {
-		log.Printf("error loading previous salt state: %v", err)
+		return nil, err
 	}
-
 	salt := &saltUpdater{
 		state: saltState,
 	}
 	go salt.modemConnectedListener()
 	if err := startService(salt); err != nil {
-		return err
+		return saltState, err
 	}
-	runtime.Goexit()
-	return nil
+	return saltState, err
 }
 
-func (s *saltUpdater) runSaltCallSync(args []string, makeEvent bool) (*saltrequester.SaltState, error) {
+func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime time.Time) (*saltrequester.SaltState, error) {
 	if s.state.RunningUpdate {
 		return nil, errors.New("failed to run salt call as one is already running")
 	}
@@ -160,6 +178,9 @@ func (s *saltUpdater) runSaltCallSync(args []string, makeEvent bool) (*saltreque
 	log.Println("finished salt call")
 	s.state.LastCallSuccess = err == nil
 	s.state.LastCallOut = string(out)
+	if updateCall && s.state.LastCallSuccess && !updateTime.IsZero() {
+		s.state.LastUpdate = updateTime
+	}
 	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
 	if err != nil {
 		s.state.LastCallNodegroup = "error reading nodegroup"
@@ -167,16 +188,12 @@ func (s *saltUpdater) runSaltCallSync(args []string, makeEvent bool) (*saltreque
 		s.state.LastCallNodegroup = strings.TrimSpace(string(nodegroupOut)) //Removes newline character
 	}
 	s.state.LastCallArgs = args
-	saltStateJSON, err := json.Marshal(*s.state)
-	if err != nil {
-		log.Printf("failed to marshal saltUpdater: %v\n", err)
-		return nil, err
-	}
-	err = ioutil.WriteFile(saltUpdateFile, saltStateJSON, 0644)
+
+	err = saltrequester.WriteStateFile(s.state)
 	if err != nil {
 		log.Printf("failed to save salt JSON to file: %v\n", err)
 	}
-	if makeEvent {
+	if updateCall {
 		event, err := makeEventFromState(*s.state)
 		if err != nil {
 			return nil, err
@@ -186,12 +203,12 @@ func (s *saltUpdater) runSaltCallSync(args []string, makeEvent bool) (*saltreque
 	return s.state, nil
 }
 
-func (s *saltUpdater) runSaltCall(args []string, makeEvent bool) {
+func (s *saltUpdater) runSaltCall(args []string, updateCall bool, updateTime time.Time) {
 	if s.state.RunningUpdate {
 		return
 	}
 	go func(s *saltUpdater) {
-		s.runSaltCallSync(args, makeEvent)
+		s.runSaltCallSync(args, updateCall, updateTime)
 	}(s)
 }
 
@@ -260,32 +277,29 @@ func extractNumbers(str string) []float64 {
 	return results
 }
 
-func enableAutoUpdate() error {
-	err := ioutil.WriteFile(autoUpdateCronPath, []byte(autoUpdateCronString), 0600)
+func setAutoUpdate(enable bool) error {
+	config, err := goconfig.New(configDir)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	log.Println("auto update is enabled")
-	return nil
-}
-
-func disableAutoUpdate() error {
-	err := os.Remove(autoUpdateCronPath)
-	if os.IsNotExist(err) || err == nil {
-		log.Println("auto update disabled")
-		return nil
+	var saltSetup = goconfig.DefaultSalt()
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
+		return err
 	}
-	return err
+	saltSetup.AutoUpdate = enable
+	return config.Set(goconfig.SaltKey, &saltSetup)
 }
 
 func isAutoUpdateOn() (bool, error) {
-	_, err := os.Stat(autoUpdateCronPath)
-	if os.IsNotExist(err) {
-		return false, nil
-	} else if err != nil {
+	config, err := goconfig.New(configDir)
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	var saltSetup = goconfig.DefaultSalt()
+	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
+		return false, err
+	}
+	return saltSetup.AutoUpdate, nil
 }
 
 func (s *saltUpdater) modemConnectedListener() {
@@ -299,7 +313,7 @@ func (s *saltUpdater) modemConnectedListener() {
 		emptyChannel(modemConnectSignal)
 		<-modemConnectSignal
 		log.Println("Modem connected.")
-		s.runSaltCall([]string{"test.ping"}, false)
+		s.runSaltCall([]string{"test.ping"}, false, time.Now())
 	}
 }
 
