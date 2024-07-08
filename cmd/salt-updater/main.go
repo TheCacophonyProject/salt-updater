@@ -294,7 +294,7 @@ func (s *saltUpdater) runUpdate(updateTime time.Time) {
 	defer func() { stopTrackingUpdate <- true }()
 	go trackUpdateProgress(s, stopTrackingUpdate)
 
-	_, err := s.runSaltCallSync([]string{"state.apply", "--local", "--state-output=mixed", "--output-diff"}, true, updateTime)
+	_, err := s.runSaltCallSync([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true, updateTime)
 	if err != nil {
 		log.Printf("error running salt update: %v", err)
 		return
