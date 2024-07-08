@@ -46,7 +46,6 @@ var version = "<not set>"
 
 const configDir = goconfig.DefaultConfigDir
 
-// const saltUpdateFile = "/etc/cacophony/saltUpdate.json"
 const minionLogFile = "/var/log/salt/minion"
 const totalStatesCountFile = "/etc/cacophony/salt-states-count"
 

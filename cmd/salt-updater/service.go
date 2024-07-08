@@ -86,8 +86,6 @@ func (s service) RunUpdate() *dbus.Error {
 	}
 
 	go s.saltUpdater.runUpdate(updateTime)
-
-	//s.saltUpdater.runSaltCall([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true, updateTime)
 	return nil
 }
 
