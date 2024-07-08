@@ -19,8 +19,10 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"runtime"
@@ -43,6 +45,9 @@ import (
 var version = "<not set>"
 
 const configDir = goconfig.DefaultConfigDir
+
+const minionLogFile = "/var/log/salt/minion"
+const totalStatesCountFile = "/etc/cacophony/salt-states-count"
 
 // Args app arguments
 type Args struct {
@@ -210,6 +215,93 @@ func (s *saltUpdater) runSaltCall(args []string, updateCall bool, updateTime tim
 	go func(s *saltUpdater) {
 		s.runSaltCallSync(args, updateCall, updateTime)
 	}(s)
+}
+
+func trackUpdateProgress(s *saltUpdater, stop chan bool) {
+	s.state.UpdateProgressPercentage = 0
+	s.state.UpdateProgressStr = "Initializing update..."
+	log.Println("Tracking salt update progress.")
+
+	file, err := os.Open(minionLogFile)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	file.Seek(0, io.SeekEnd)
+	reader := bufio.NewReader(file)
+	stateRe := regexp.MustCompile(`INFO\s+\]\[\d+\] Running state \[(.*)\]`)
+
+	// Read totalStates from /etc/cacophony/salt-states
+	// totalStates is used to give an estimate percentage completion so doesn't need to be accurate
+	totalStatesStr, err := os.ReadFile(totalStatesCountFile)
+	if err != nil {
+		log.Printf("Error reading totalStates: %v\n", err)
+	}
+	totalStates, err := strconv.Atoi(strings.TrimSpace(string(totalStatesStr)))
+	if err != nil {
+		log.Printf("Error parsing totalStates: %v\n", err)
+		totalStates = 100 // Lets assume 100 if we can't get it
+	}
+	// Adding 5 more states in case there are more states than the last run
+	totalStates += 5
+
+	stateCount := 0
+	for {
+		// Loop until we get a signal to stop
+		select {
+		case <-stop:
+			log.Println("Stopped tracking salt update progress.")
+			// Save totalStates to file so can be reloaded on next run
+			err = os.WriteFile(totalStatesCountFile, []byte(fmt.Sprintf("%d", stateCount)), 0644)
+			if err != nil {
+				log.Printf("Error writing totalStates: %v\n", err)
+			}
+			return
+		default:
+		}
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		// Process line
+		if stateRe.MatchString(line) {
+			matches := stateRe.FindStringSubmatch(line)
+			if len(matches) != 2 {
+				log.Printf("Failed to parse state line: %s", line)
+				continue
+			}
+
+			stateCount++
+			state := matches[1]
+			log.Printf("Running %d/%d state: %s\n", stateCount, totalStates, state)
+			s.state.UpdateProgressPercentage = 100 * stateCount / totalStates
+			s.state.UpdateProgressStr = state
+		}
+	}
+}
+
+func (s *saltUpdater) runUpdate(updateTime time.Time) {
+	if s.state.RunningUpdate {
+		log.Println("Already running salt update")
+		return
+	}
+
+	stopTrackingUpdate := make(chan bool)
+	defer func() { stopTrackingUpdate <- true }()
+	go trackUpdateProgress(s, stopTrackingUpdate)
+
+	_, err := s.runSaltCallSync([]string{"state.apply", "--state-output=mixed", "--output-diff"}, true, updateTime)
+	if err != nil {
+		log.Printf("error running salt update: %v", err)
+		return
+	}
+
+	log.Println("Finished running salt update")
+	s.state.UpdateProgressPercentage = 100
+	s.state.UpdateProgressStr = "Finished update"
 }
 
 func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, error) {
