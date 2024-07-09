@@ -3,7 +3,6 @@ package saltrequester
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"log"
 	"os"
 
@@ -51,6 +50,15 @@ func RunUpdate() error {
 		return err
 	}
 	return obj.Call(methodBase+".RunUpdate", 0).Store()
+}
+
+// RunUpdate will run a salt update if one is not already running
+func ForceUpdate() error {
+	obj, err := getDbusObj()
+	if err != nil {
+		return err
+	}
+	return obj.Call(methodBase+".ForceUpdate", 0).Store()
 }
 
 // RunPing will ping the salt server if a salt call is not already running
@@ -153,7 +161,7 @@ func ReadStateFile() (*SaltState, error) {
 			return saltState, err
 		}
 	}
-	data, err := ioutil.ReadFile(saltUpdateFile)
+	data, err := os.ReadFile(saltUpdateFile)
 	if err != nil {
 		log.Printf("error reading previous salt state: %v", err)
 	} else if err := json.Unmarshal(data, saltState); err != nil {

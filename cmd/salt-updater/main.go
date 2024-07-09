@@ -157,6 +157,8 @@ func runMain() error {
 func runDbus() (*saltrequester.SaltState, error) {
 	//Read in previous state
 	saltState, err := saltrequester.ReadStateFile()
+	saltState.UpdateProgressPercentage = 0
+	saltState.UpdateProgressStr = ""
 	if err != nil {
 		return nil, err
 	}

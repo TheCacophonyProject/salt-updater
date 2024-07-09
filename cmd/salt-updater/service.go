@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -81,6 +81,8 @@ func (s service) RunUpdate() *dbus.Error {
 	}
 	//if we have an error lets just run salt update
 	if err == nil && !updateAvailable {
+		s.saltUpdater.state.UpdateProgressPercentage = 100
+		s.saltUpdater.state.UpdateProgressStr = "No update available"
 		log.Println("No update available")
 		return nil
 	}
@@ -89,11 +91,19 @@ func (s service) RunUpdate() *dbus.Error {
 	return nil
 }
 
+func (s service) ForceUpdate() *dbus.Error {
+	go s.saltUpdater.runUpdate(time.Now())
+	return nil
+}
+
 // UpdateExists checks if there has been any git updates since the last update time for this minions nodegroup
 // uses github api to view last commit to the repo
 func UpdateExists() (bool, time.Time, error) {
 
-	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	nodegroupOut, err := os.ReadFile("/etc/cacophony/salt-nodegroup")
+	if err != nil {
+		return false, time.Time{}, err
+	}
 	nodeGroup := string(nodegroupOut)
 	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
 	branch, ok := nodeGroupToBranch[nodeGroup]
