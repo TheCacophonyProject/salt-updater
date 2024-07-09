@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"runtime"
 
@@ -45,9 +44,10 @@ import (
 var version = "<not set>"
 
 const configDir = goconfig.DefaultConfigDir
-
 const minionLogFile = "/var/log/salt/minion"
 const totalStatesCountFile = "/etc/cacophony/salt-states-count"
+const nodegroupFile = "/etc/cacophony/salt-nodegroup"
+const minionIdFile = "/etc/salt/minion_id"
 
 // Args app arguments
 type Args struct {
@@ -89,12 +89,12 @@ func runMain() error {
 	log.Printf("Running version: %s", version)
 
 	// Don't want to run any salt commands before the device is registered as it will set a salt minion_id
-	if _, err := os.Stat("/etc/salt/minion_id"); os.IsNotExist(err) {
+	if _, err := os.Stat(minionIdFile); os.IsNotExist(err) {
 		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
 		// return nil
 	}
 	saltState, _ := saltrequester.ReadStateFile()
-	nodegroupOut, _ := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	nodegroupOut, _ := os.ReadFile(nodegroupFile)
 	nodegroup := strings.TrimSpace(string(nodegroupOut))
 	if strings.TrimSpace(saltState.LastCallNodegroup) != nodegroup {
 		log.Println("Node group has changed resetting last update time")
@@ -186,7 +186,7 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime
 	if updateCall && s.state.LastCallSuccess && !updateTime.IsZero() {
 		s.state.LastUpdate = updateTime
 	}
-	nodegroupOut, err := ioutil.ReadFile("/etc/cacophony/salt-nodegroup")
+	nodegroupOut, err := os.ReadFile(nodegroupFile)
 	if err != nil {
 		s.state.LastCallNodegroup = "error reading nodegroup"
 	} else {
