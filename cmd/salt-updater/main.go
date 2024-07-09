@@ -91,7 +91,7 @@ func runMain() error {
 	// Don't want to run any salt commands before the device is registered as it will set a salt minion_id
 	if _, err := os.Stat(minionIdFile); os.IsNotExist(err) {
 		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
-		// return nil
+		return nil
 	}
 	saltState, _ := saltrequester.ReadStateFile()
 	nodegroupOut, _ := os.ReadFile(nodegroupFile)
