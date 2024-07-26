@@ -337,6 +337,13 @@ func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, erro
 		}
 	}
 
+	// Read salt minion ID
+	idRaw, err := os.ReadFile(minionIdFile)
+	if err != nil {
+		return nil, err
+	}
+	id := strings.TrimSpace(string(idRaw))
+
 	details := map[string]interface{}{
 		"changed":   changed,
 		"failed":    failed,
@@ -344,6 +351,7 @@ func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, erro
 		"nodegroup": state.LastCallNodegroup,
 		"success":   state.LastCallSuccess,
 		"args":      state.LastCallArgs,
+		"minionID":  id,
 	}
 
 	// if some failed add more details
