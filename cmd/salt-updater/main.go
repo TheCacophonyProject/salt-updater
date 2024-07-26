@@ -83,16 +83,20 @@ type saltUpdater struct {
 	state *saltrequester.SaltState
 }
 
+var minionID string
+
 func runMain() error {
 	log.SetFlags(0)
 	args := procArgs()
 	log.Printf("Running version: %s", version)
 
-	// Don't want to run any salt commands before the device is registered as it will set a salt minion_id
-	if _, err := os.Stat(minionIdFile); os.IsNotExist(err) {
-		log.Println("The salt minion_id file was not found, meaning that the device has not registered yet, exiting.")
-		return nil
+	// Read salt minion ID
+	idRaw, err := os.ReadFile(minionIdFile)
+	if err != nil {
+		return err
 	}
+	minionID = strings.TrimSpace(string(idRaw))
+
 	saltState, _ := saltrequester.ReadStateFile()
 	nodegroupOut, _ := os.ReadFile(nodegroupFile)
 	nodegroup := strings.TrimSpace(string(nodegroupOut))
@@ -337,13 +341,6 @@ func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, erro
 		}
 	}
 
-	// Read salt minion ID
-	idRaw, err := os.ReadFile(minionIdFile)
-	if err != nil {
-		return nil, err
-	}
-	id := strings.TrimSpace(string(idRaw))
-
 	details := map[string]interface{}{
 		"changed":   changed,
 		"failed":    failed,
@@ -351,7 +348,7 @@ func makeEventFromState(state saltrequester.SaltState) (*eventclient.Event, erro
 		"nodegroup": state.LastCallNodegroup,
 		"success":   state.LastCallSuccess,
 		"args":      state.LastCallArgs,
-		"minionID":  id,
+		"minionID":  minionID,
 	}
 
 	// if some failed add more details

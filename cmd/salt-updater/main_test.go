@@ -38,7 +38,7 @@ Total states run:     106
 Total run time:    10.457 s`
 
 func TestMakeEvent(t *testing.T) {
-
+	minionID = "tc2-foobar"
 	args := []string{"arg1", "arg2"}
 	nodegroup := "test nodegroup"
 
@@ -56,6 +56,7 @@ func TestMakeEvent(t *testing.T) {
 	assert.Equal(t, event.Details["args"], args)
 	assert.Equal(t, event.Details["out"], nil)
 	assert.Equal(t, event.Details["runTime"], nil)
+	assert.Equal(t, event.Details["minionID"], "tc2-foobar")
 
 	event, err = makeEventFromState(saltrequester.SaltState{
 		LastCallSuccess:   true,
@@ -71,4 +72,5 @@ func TestMakeEvent(t *testing.T) {
 	assert.Equal(t, event.Details["args"], args)
 	assert.Equal(t, event.Details["out"], testOutFail)
 	assert.Equal(t, event.Details["runTime"], float64(10.457))
+	assert.Equal(t, event.Details["minionID"], "tc2-foobar")
 }
