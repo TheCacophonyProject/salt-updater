@@ -51,6 +51,7 @@ const minionIdFile = "/etc/salt/minion_id"
 
 // Args app arguments
 type Args struct {
+	LatestUpdate       bool `arg:"--latest-update" help:"Display the latest saltopts repo update time for this device."`
 	RunDbus            bool `arg:"--run-dbus" help:"Run the dbus service."`
 	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
 	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
@@ -148,6 +149,12 @@ func runMain() error {
 
 	if args.DisableAutoUpdate {
 		return setAutoUpdate(false)
+	}
+
+	if args.LatestUpdate {
+		_, updateTime, _ := UpdateExists()
+		log.Println(updateTime)
+		return nil
 	}
 
 	minutes := rand.Intn(args.RandomDelayMinutes + 1)
