@@ -156,7 +156,7 @@ func runMain() error {
 		if err != nil {
 			log.Println(updateTime)
 		} else {
-			log.Printf("COuld not get latest update time displaying last known update time %v", err)
+			log.Printf("Could not get latest update time displaying last known update time %v", err)
 			log.Println(saltState.LastUpdate)
 		}
 		return nil
