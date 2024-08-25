@@ -195,7 +195,7 @@ func runMain() error {
 			return nil
 		}
 
-		// Log last update time
+		// Log last time a update was run.
 		state, err := saltrequester.State()
 		nodegroup := state.LastCallNodegroup
 		if err != nil {
@@ -203,13 +203,13 @@ func runMain() error {
 		}
 		log.Printf("Last update was run at '%s', with nodegroup '%s'", state.LastUpdate.Format("2006-01-02 15:04:05"), nodegroup)
 
-		// Log latest update time
+		// Log when the latest software was released.
 		latestUpdateTime, err := GetLatestUpdateTime(nodegroup)
 		if err != nil {
 			log.Errorf("Error getting latest update time: %v", err)
 			return err
 		}
-		log.Printf("Latest update was run at '%s', with nodegroup '%s'", latestUpdateTime.Format("2006-01-02 15:04:05"), nodegroup)
+		log.Printf("Latest software update was published at '%s', for nodegroup '%s'", latestUpdateTime.Format("2006-01-02 15:04:05"), nodegroup)
 		if state.LastUpdate.Before(*latestUpdateTime) {
 			log.Info("Found new update, recommend a salt update.")
 			return nil
@@ -488,7 +488,7 @@ func GetLatestUpdateTime(nodegroup string) (*time.Time, error) {
 }
 
 func (s *saltUpdater) CheckIfUpdateAvailable() bool {
-	_, _, err := UpdateExists()
+	_, _, err := saltrequester.UpdateExists()
 	return err == nil
 }
 
