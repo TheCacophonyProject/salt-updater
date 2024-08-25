@@ -20,13 +20,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
-	"runtime"
+	"net"
+	"net/http"
+	"net/url"
 
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -36,28 +37,39 @@ import (
 
 	"github.com/TheCacophonyProject/event-reporter/v3/eventclient"
 	goconfig "github.com/TheCacophonyProject/go-config"
+	"github.com/TheCacophonyProject/go-utils/logging"
+	"github.com/TheCacophonyProject/go-utils/saltutil"
 	"github.com/TheCacophonyProject/modemd/modemlistener"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
+	"github.com/sirupsen/logrus"
 )
 
 var version = "<not set>"
 
+var log *logrus.Logger
+
 const configDir = goconfig.DefaultConfigDir
 const minionLogFile = "/var/log/salt/minion"
 const totalStatesCountFile = "/etc/cacophony/salt-states-count"
-const nodegroupFile = "/etc/cacophony/salt-nodegroup"
-const minionIdFile = "/etc/salt/minion_id"
 
 // Args app arguments
 type Args struct {
-	RunDbus            bool `arg:"--run-dbus" help:"Run the dbus service."`
-	RandomDelayMinutes int  `arg:"--random-delay-minutes" help:"Delay update between 0 and given minutes."`
-	Ping               bool `arg:"--ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
-	State              bool `arg:"--state" help:"Print out the current state of the salt update"`
-	EnableAutoUpdate   bool `arg:"--enable-auto-update" help:"Enables update check on PI boot up"`
-	DisableAutoUpdate  bool `arg:"--disable-auto-update" help:"Disables updates on PI boot"`
+	RunDbus           *subcommand          `arg:"subcommand:run-dbus" help:"Run the dbus service."`
+	RunUpdate         *runUpdateSubcommand `arg:"subcommand:run-update" help:"Run a salt update if one is not already running."`
+	Ping              *subcommand          `arg:"subcommand:ping" help:"Don't run a salt state.apply, just ping the salt server. Will not delay call."`
+	State             *subcommand          `arg:"subcommand:state" help:"Print out the current state of the salt update"`
+	EnableAutoUpdate  *subcommand          `arg:"subcommand:enable-auto-update" help:"Enables update check on PI boot up"`
+	DisableAutoUpdate *subcommand          `arg:"subcommand:disable-auto-update" help:"Disables updates on PI boot"`
+	CheckForUpdate    *subcommand          `arg:"subcommand:check-for-update" help:"Checks if there is an update available"`
+	logging.LogArgs
 }
+
+type runUpdateSubcommand struct {
+	Force bool `arg:"--force" help:"Force running an update even if it is already up to date."`
+}
+
+type subcommand struct{}
 
 // Version return version of app
 func (Args) Version() string {
@@ -65,18 +77,9 @@ func (Args) Version() string {
 }
 
 func procArgs() Args {
-	args := Args{
-		RunDbus:            false,
-		RandomDelayMinutes: 120,
-	}
+	args := Args{}
 	arg.MustParse(&args)
 	return args
-}
-
-func main() {
-	if err := runMain(); err != nil {
-		log.Fatal(err)
-	}
 }
 
 type saltUpdater struct {
@@ -85,29 +88,31 @@ type saltUpdater struct {
 
 var minionID string
 
+func main() {
+	if err := runMain(); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func runMain() error {
-	log.SetFlags(0)
+	// Process arguments
 	args := procArgs()
+
+	// Setup logging
+	log = logging.NewLogger(args.LogLevel)
 	log.Printf("Running version: %s", version)
 
-	// Read salt minion ID
-	idRaw, err := os.ReadFile(minionIdFile)
+	// Read salt minion ID.
+	// Exit if failed to read salt minion ID as it means the device is not yet ready to run salt.
+	id, err := saltutil.GetMinionID(log)
 	if err != nil {
+		log.Error("Error reading minion ID: " + err.Error())
 		return err
 	}
-	minionID = strings.TrimSpace(string(idRaw))
+	minionID = id
+	log.Debug("Minion ID: " + minionID)
 
-	saltState, _ := saltrequester.ReadStateFile()
-	nodegroupOut, _ := os.ReadFile(nodegroupFile)
-	nodegroup := strings.TrimSpace(string(nodegroupOut))
-	if strings.TrimSpace(saltState.LastCallNodegroup) != nodegroup {
-		log.Println("Node group has changed resetting last update time")
-		saltState = &saltrequester.SaltState{LastCallNodegroup: nodegroup}
-		err := saltrequester.WriteStateFile(saltState)
-		if err != nil {
-			return err
-		}
-	}
+	// Read in salt config
 	config, err := goconfig.New(configDir)
 	if err != nil {
 		return err
@@ -116,24 +121,33 @@ func runMain() error {
 	if err := config.Unmarshal(goconfig.SaltKey, &saltSetup); err != nil {
 		return err
 	}
-	log.Printf("Auto update is %v", saltSetup.AutoUpdate)
-	if args.RunDbus {
+	log.Printf("Salt config: %+v", saltSetup)
+
+	// Run DBus service
+	if args.RunDbus != nil {
+		log.Info("Running dbus service")
 		_, err := runDbus()
 		if err != nil {
 			return err
 		}
-		if saltSetup.AutoUpdate {
-			saltrequester.RunUpdate()
+		for {
+			// Check for update every 24 hours
+			err := saltrequester.RunUpdate()
+			if err != nil {
+				log.Error("Error running salt update: " + err.Error())
+			}
+			time.Sleep(24 * time.Hour)
 		}
-		runtime.Goexit()
 	}
 
-	if args.Ping {
-		log.Println("calling salt ping")
+	// Ping salt master
+	if args.Ping != nil {
+		log.Info("Calling salt ping")
 		return saltrequester.RunPing()
 	}
 
-	if args.State {
+	// Check salt state
+	if args.State != nil {
 		state, err := saltrequester.State()
 		if err != nil {
 			return fmt.Errorf("failed to get salt state, %v", err)
@@ -142,20 +156,111 @@ func runMain() error {
 		return nil
 	}
 
-	if args.EnableAutoUpdate {
+	// Enable auto update
+	if args.EnableAutoUpdate != nil {
 		return setAutoUpdate(true)
 	}
 
-	if args.DisableAutoUpdate {
+	// Disable auto update
+	if args.DisableAutoUpdate != nil {
 		return setAutoUpdate(false)
 	}
 
-	minutes := rand.Intn(args.RandomDelayMinutes + 1)
-	log.Printf("waiting %v minutes before running salt update\n", minutes)
-	time.Sleep(time.Duration(minutes) * time.Minute)
+	// Run salt update
+	if args.RunUpdate != nil {
+		var err error
+		if args.RunUpdate.Force {
+			log.Println("Forcing a salt update.")
+			err = saltrequester.ForceUpdate()
+		} else {
+			log.Println("Calling for a salt update.")
+			err = saltrequester.RunUpdate()
+		}
+		if err != nil {
+			log.Println("Error calling for a salt update.")
+			return err
+		}
+		return nil
+	}
 
-	log.Println("calling salt update")
-	return saltrequester.RunUpdate()
+	if args.CheckForUpdate != nil {
+		// Check for the nodegroup changing
+		nodegroupChange, err := checkNodeGroupChange()
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		if nodegroupChange {
+			log.Info("Found nodegroup change, recommend a salt update.")
+			return nil
+		}
+
+		// Log last update time
+		state, err := saltrequester.State()
+		nodegroup := state.LastCallNodegroup
+		if err != nil {
+			return fmt.Errorf("failed to get salt state, %v", err)
+		}
+		log.Printf("Last update was run at '%s', with nodegroup '%s'", state.LastUpdate.Format("2006-01-02 15:04:05"), nodegroup)
+
+		// Log latest update time
+		latestUpdateTime, err := GetLatestUpdateTime(nodegroup)
+		if err != nil {
+			log.Errorf("Error getting latest update time: %v", err)
+			return err
+		}
+		log.Printf("Latest update was run at '%s', with nodegroup '%s'", latestUpdateTime.Format("2006-01-02 15:04:05"), nodegroup)
+		if state.LastUpdate.Before(*latestUpdateTime) {
+			log.Info("Found new update, recommend a salt update.")
+			return nil
+		} else {
+			log.Info("No new update found, nothing to do.")
+		}
+
+		return nil
+	}
+
+	log.Error("No command specified.")
+	return errors.New("no command specified")
+}
+
+// checkNodeGroupChange checks if the node group is consistent between:
+// - Salt grain file.
+// - Salt state
+// - /etc/cacophony/nodegroup
+// Return true if any of them don't match with each other.
+func checkNodeGroupChange() (bool, error) {
+	// Get salt state nodegroup
+	saltState, err := saltrequester.ReadStateFile()
+	if err != nil {
+		log.Errorf("Error reading salt state: %v", err)
+		return false, err
+	}
+	stateNodeGroup := strings.TrimSpace(saltState.LastCallNodegroup)
+	log.Debug("State nodegroup: " + stateNodeGroup)
+
+	// Get nodegroup from /etc/cacophony/nodegroup
+	fileNodeGroup, err := saltutil.GetNodegroupFromFile()
+	if err != nil {
+		log.Errorf("Error reading nodegroup file: %v", err)
+		return false, err
+	}
+	log.Debug("File nodegroup: " + fileNodeGroup)
+
+	// Get salt grain nodegroup
+	grains, err := saltutil.GetSaltGrains(log)
+	if err != nil {
+		log.Errorf("Error reading salt grains: %v", err)
+		return false, err
+	}
+	grainsNodeGroup, ok := grains["environment"]
+	if !ok {
+		log.Debug("No nodegroup found in grains")
+	}
+	log.Debug("Grains nodegroup: " + grainsNodeGroup)
+
+	change := grainsNodeGroup != stateNodeGroup || grainsNodeGroup != fileNodeGroup
+	return change, nil
 }
 
 func runDbus() (*saltrequester.SaltState, error) {
@@ -177,26 +282,31 @@ func runDbus() (*saltrequester.SaltState, error) {
 }
 
 func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime time.Time) (*saltrequester.SaltState, error) {
+	// Don't want multiple calls running at the same time
 	if s.state.RunningUpdate {
 		return nil, errors.New("failed to run salt call as one is already running")
 	}
+
+	log.Printf("Starting salt call: %v", args)
 	s.state.RunningUpdate = true
-	log.Printf("starting salt call: %v", args)
 	s.state.RunningArgs = args
-	out, err := exec.Command("salt-call", args...).Output()
+	out, err := exec.Command("salt-call", args...).CombinedOutput()
 	s.state.RunningUpdate = false
 	s.state.RunningArgs = nil
-	log.Println("finished salt call")
+	log.Printf("Finished salt call: %v", args)
+
 	s.state.LastCallSuccess = err == nil
 	s.state.LastCallOut = string(out)
 	if updateCall && s.state.LastCallSuccess && !updateTime.IsZero() {
 		s.state.LastUpdate = updateTime
 	}
-	nodegroupOut, err := os.ReadFile(nodegroupFile)
+
+	nodegroup, err := saltutil.GetNodegroupFromFile()
 	if err != nil {
+		log.Errorf("failed to read nodegroup file: %v", err)
 		s.state.LastCallNodegroup = "error reading nodegroup"
 	} else {
-		s.state.LastCallNodegroup = strings.TrimSpace(string(nodegroupOut)) //Removes newline character
+		s.state.LastCallNodegroup = nodegroup
 	}
 	s.state.LastCallArgs = args
 
@@ -287,6 +397,99 @@ func trackUpdateProgress(s *saltUpdater, stop chan bool) {
 			s.state.UpdateProgressStr = state
 		}
 	}
+}
+
+const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
+
+var nodeGroupToBranch = map[string]string{
+	"tc2-dev":  "dev",
+	"tc2-test": "test",
+	"tc2-prod": "prod",
+	"dev-pis":  "dev",
+	"test-pis": "test",
+	"prod-pis": "prod",
+}
+
+func GetLatestUpdateTime(nodegroup string) (*time.Time, error) {
+	// Check what branch the is used for this nodegroup
+	branch, ok := nodeGroupToBranch[nodegroup]
+	if !ok {
+		err := fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodegroup)
+		log.Errorf(err.Error())
+		return nil, err
+	}
+
+	// Make request to salt repo
+	u, err := url.Parse(saltrepoURL)
+	if err != nil {
+		log.Errorf("Failed to parse salt repo URL: %v", err)
+		return nil, err
+	}
+	params := url.Values{}
+	params.Add("sha", branch)
+	params.Add("per_page", "1")
+	u.RawQuery = params.Encode()
+	req, _ := http.NewRequest("GET", u.String(), nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				KeepAlive: 30 * time.Second,
+				DualStack: true,
+			}).DialContext,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          5,
+			IdleConnTimeout:       90 * time.Second,
+		},
+	}
+
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("Failed to send request: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check response
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		err := fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, u.String())
+		log.Errorf(err.Error())
+		return nil, err
+	}
+
+	// Parse response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("Failed to read body: %v", err)
+		return nil, err
+	}
+	var details []interface{}
+	err = json.Unmarshal(body, &details)
+	if err != nil {
+		log.Errorf("Failed to unmarshal body: %v", err)
+		return nil, err
+	}
+	if len(details) == 0 {
+		log.Printf("No updates exists for %v node group", nodegroup)
+		return nil, nil
+	}
+	commitDate := details[0].(map[string]interface{})["commit"].(map[string]interface{})["author"].(map[string]interface{})["date"].(string)
+	layout := "2006-01-02T15:04:05Z"
+	updateTime, err := time.Parse(layout, commitDate)
+	if err != nil {
+		log.Errorf("Failed to parse commit date: %v", err)
+		return nil, err
+	}
+
+	return &updateTime, nil
+}
+
+func (s *saltUpdater) CheckIfUpdateAvailable() bool {
+	_, _, err := UpdateExists()
+	return err == nil
 }
 
 func (s *saltUpdater) runUpdate(updateTime time.Time) {

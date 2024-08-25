@@ -1,13 +1,15 @@
 module github.com/TheCacophonyProject/salt-updater
 
-go 1.20
+go 1.22.3
 
 require (
 	github.com/TheCacophonyProject/event-reporter/v3 v3.7.0
 	github.com/TheCacophonyProject/go-config v1.18.0
+	github.com/TheCacophonyProject/go-utils v0.0.0-00010101000000-000000000000
 	github.com/TheCacophonyProject/modemd v1.6.0
 	github.com/alexflint/go-arg v1.4.2
 	github.com/godbus/dbus v4.1.0+incompatible
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 )
 
@@ -38,3 +40,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/TheCacophonyProject/go-utils => ../go-utils

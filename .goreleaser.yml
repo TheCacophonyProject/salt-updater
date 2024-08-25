@@ -32,6 +32,8 @@ nfpms:
       dst: /etc/systemd/system/salt-updater.service
     - src: _release/org.cacophony.salt-updater.conf
       dst: /etc/dbus-1/system.d/org.cacophony.salt-updater.conf
+    - src: _release/org.cacophony.salt-helper.conf
+      dst: /etc/dbus-1/system.d/org.cacophony.salt-helper.conf
   scripts:
     postinstall: "_release/postinstall.sh"
 

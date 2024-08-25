@@ -4,7 +4,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/salt-updater --run-dbus
+ExecStart=/usr/bin/salt-updater run-dbus
 Restart=on-failure
 RestartSec=5s
 
