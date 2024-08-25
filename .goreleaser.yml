@@ -13,9 +13,9 @@ builds:
   - arm
   goarm:
   - "7"
-  main: ./cmd/salt-updater
+  main: ./cmd/salt-helper
   ldflags: -s -w -X main.version={{.Version}}
-  binary: salt-updater
+  binary: salt-helper
 
 nfpms:
 - vendor: The Cacophony Project
