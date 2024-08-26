@@ -130,6 +130,12 @@ func runMain() error {
 		if err != nil {
 			return err
 		}
+
+		// Previous versions used a cron job to run the update. Remove it if it exists.
+		if err := removeOldCronFile(); err != nil {
+			log.Errorf("Failed to remove old cron file: %v", err)
+		}
+
 		for {
 			// Check for update every 24 hours
 			err := saltrequester.RunUpdate()
@@ -163,6 +169,10 @@ func runMain() error {
 
 	// Disable auto update
 	if args.DisableAutoUpdate != nil {
+		if err := removeOldCronFile(); err != nil {
+			log.Error(err)
+			return err
+		}
 		return setAutoUpdate(false)
 	}
 
@@ -222,6 +232,19 @@ func runMain() error {
 
 	log.Error("No command specified.")
 	return errors.New("no command specified")
+}
+
+func removeOldCronFile() error {
+	// Remove old cron job file if it exists.
+	oldCronFile := "/etc/cron.d/salt-updater"
+	if _, err := os.Stat(oldCronFile); err == nil {
+		log.Info("Removing old cron file: " + oldCronFile)
+		if err := os.Remove(oldCronFile); err != nil {
+			log.Error(err)
+			return err
+		}
+	}
+	return nil
 }
 
 // checkNodeGroupChange checks if the node group is consistent between:
