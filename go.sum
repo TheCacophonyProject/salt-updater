@@ -57,6 +57,8 @@ github.com/TheCacophonyProject/go-config v0.0.0-20190922224052-7c2a21bc6b88/go.m
 github.com/TheCacophonyProject/go-config v1.9.0/go.mod h1:+y80PSRZudMYuVrYTGOvzc66NxVJWKS4TuU442vmvhY=
 github.com/TheCacophonyProject/go-config v1.18.0 h1:R3zOjfHBxsI8t5J7PSuv6Wb5xwj2LPMC8vqD+d5Azd8=
 github.com/TheCacophonyProject/go-config v1.18.0/go.mod h1:XZwQmNl2wQXhYR18RQtwZ6LwFwgAx73yzJfymYLz68s=
+github.com/TheCacophonyProject/go-utils v0.1.0 h1:LhWVp2lKFoz6qRoLTV+CbrnnJAX6WzT4xwFMHPwc0G8=
+github.com/TheCacophonyProject/go-utils v0.1.0/go.mod h1:jZPUZ4GtYVxnlTtqiYKMFWDT//kmxdbwjLW3HCyCmCE=
 github.com/TheCacophonyProject/modemd v0.0.0-20190605010435-ae5b0f2eb760/go.mod h1:bfwJ/WcvDY9XtHKC5tcRfVrU8RWaW8DLYAAUfsrJr/4=
 github.com/TheCacophonyProject/modemd v1.6.0 h1:o2Rp44VRKzk5OvgqjNgx7RBLYqsJBR4HAyPShnH80/0=
 github.com/TheCacophonyProject/modemd v1.6.0/go.mod h1:0M7yJCdqhvoI5dVeDjOH6vsmbOBr1YhZ8DpAK4AkOA0=
