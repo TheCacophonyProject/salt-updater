@@ -136,6 +136,38 @@ func runMain() error {
 			log.Errorf("Failed to remove old cron file: %v", err)
 		}
 
+		// Validate salt grains. Sometimes the grains and the device settings are out of sync.
+		log.Info("Checking salt grains")
+		var deviceConfig = goconfig.Device{}
+		if err := config.Unmarshal(goconfig.DeviceKey, &deviceConfig); err != nil {
+			return err
+		}
+		log.Debugf("Device config: %+v", deviceConfig)
+		grains, err := saltutil.GetSaltGrains(log)
+		if err != nil {
+			return err
+		}
+		updateGrains := false
+		if grains.DeviceName != deviceConfig.Name {
+			updateGrains = true
+			log.Infof("Grain device name '%s' does not match device config name '%s'", grains.DeviceName, deviceConfig.Name)
+		}
+		if grains.Group != deviceConfig.Group {
+			updateGrains = true
+			log.Infof("Grain group '%s' does not match device config group '%s'", grains.Group, deviceConfig.Group)
+		}
+		if updateGrains {
+			log.Info("Updating grains")
+			newGrains := saltutil.Grains{
+				DeviceName: deviceConfig.Name,
+				Group:      deviceConfig.Group,
+			}
+			if err := saltutil.SetGrains(newGrains, log); err != nil {
+				return err
+			}
+			log.Info("Grains updated")
+		}
+
 		for {
 			// Check for update every 24 hours
 			err := saltrequester.RunUpdate()
@@ -276,8 +308,8 @@ func checkNodeGroupChange() (bool, error) {
 		log.Errorf("Error reading salt grains: %v", err)
 		return false, err
 	}
-	grainsNodeGroup, ok := grains["environment"]
-	if !ok {
+	grainsNodeGroup := grains.Environment
+	if grainsNodeGroup == "" {
 		log.Debug("No nodegroup found in grains")
 	}
 	log.Debug("Grains nodegroup: " + grainsNodeGroup)
