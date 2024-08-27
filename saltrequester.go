@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,14 +13,17 @@ import (
 
 	"time"
 
+	"github.com/TheCacophonyProject/go-utils/logging"
 	"github.com/godbus/dbus"
 )
 
 const (
-	dbusPath   = "/org/cacophony/saltupdater"
-	dbusDest   = "org.cacophony.saltupdater"
-	methodBase = "org.cacophony.saltupdater"
+	dbusPath   = "/org/cacophony/salt_helper"
+	dbusDest   = "org.cacophony.salt_helper"
+	methodBase = "org.cacophony.salt_helper"
 )
+
+var log = logging.NewLogger("info")
 
 var nodeGroupToBranch = map[string]string{
 	"tc2-dev":  "dev",
