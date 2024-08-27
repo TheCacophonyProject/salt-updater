@@ -196,7 +196,13 @@ func runMain() error {
 
 	// Enable auto update
 	if args.EnableAutoUpdate != nil {
-		return setAutoUpdate(true)
+		err := setAutoUpdate(true)
+		if err != nil {
+			log.Errorf("Failed to enable auto update: %v", err)
+			return err
+		}
+		log.Info("Auto update has been enabled")
+		return nil
 	}
 
 	// Disable auto update
@@ -205,7 +211,13 @@ func runMain() error {
 			log.Error(err)
 			return err
 		}
-		return setAutoUpdate(false)
+		err := setAutoUpdate(false)
+		if err != nil {
+			log.Errorf("Failed to disable auto update: %v", err)
+			return err
+		}
+		log.Info("Auto update has been disabled")
+		return nil
 	}
 
 	// Run salt update
