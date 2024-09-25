@@ -1,5 +1,7 @@
 project_name: salt-updater
 
+version: 2
+
 release:
   github:
     owner: TheCacophonyProject
