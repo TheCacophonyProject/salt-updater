@@ -254,7 +254,7 @@ func runMain() error {
 		log.Printf("Last update was run at '%s', with nodegroup '%s'", state.LastUpdate.Format("2006-01-02 15:04:05"), nodegroup)
 
 		// Log when the latest software was released.
-		_, latestUpdateTime, err := saltrequester.UpdateExistsForNodeGroup(nodegroup)
+		latestUpdateTime, err := saltrequester.GetLatestUpdateTime(nodegroup)
 		if err != nil {
 			log.Errorf("Error getting latest update time: %v", err)
 			return err

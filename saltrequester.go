@@ -191,62 +191,68 @@ func UpdateExists() (bool, time.Time, error) {
 	if err != nil {
 		return false, time.Time{}, err
 	}
-	return UpdateExistsForNodeGroup(string(nodegroupOut))
+	saltState, _ := ReadStateFile()
+
+	updateTime, err := GetLatestUpdateTime(string(nodegroupOut))
+	if err != nil {
+		return false, updateTime, err
+	}
+
+	return updateTime.After(saltState.LastUpdate), updateTime, nil
 }
 
 // UpdateExists checks if there has been any git updates since the last update time for this minions nodegroup
 // uses github api to view last commit to the repo
-func UpdateExistsForNodeGroup(nodeGroup string) (bool, time.Time, error) {
+func GetLatestUpdateTime(nodeGroup string) (time.Time, error) {
 
 	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
 	branch, ok := nodeGroupToBranch[nodeGroup]
 	var updateTime time.Time
 
 	if !ok {
-		return false, updateTime, fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodeGroup)
+		return updateTime, fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodeGroup)
 	}
-	saltState, _ := ReadStateFile()
-	log.Printf("Checking for updates for saltops %v branch, last update was %v", branch, saltState.LastUpdate)
+	log.Printf("Checking for updates for saltops %v branch", branch)
 	resp, err := http.Get(saltVersionUrl)
 
 	if err != nil {
-		return false, updateTime, err
+		return updateTime, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, saltVersionUrl)
+		return updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, saltVersionUrl)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, updateTime, err
+		return updateTime, err
 
 	}
 	var details map[string]interface{}
 	err = json.Unmarshal(body, &details)
 	if err != nil {
-		return false, updateTime, err
+		return updateTime, err
 	}
 
 	var commitDate string
 	if branchDetails, ok := details[branch]; ok {
 		if tc2, ok := branchDetails.(map[string]interface{})["tc2"]; ok {
 			if commitDate, ok = tc2.(map[string]interface{})["commitDate"].(string); !ok {
-				err = fmt.Errorf("Could not find commitDate key in json %v", commitDate)
+				err = fmt.Errorf("could not find commitDate key in json %v", commitDate)
 			}
 		} else {
-			err = fmt.Errorf("Could not find tc2 key in json %v", branchDetails)
+			err = fmt.Errorf("could not find tc2 key in json %v", branchDetails)
 		}
 	} else {
-		err = fmt.Errorf("Could not find %v key in json %v", branch, details)
+		err = fmt.Errorf("could not find %v key in json %v", branch, details)
 	}
 	if err != nil {
-		return false, updateTime, err
+		return updateTime, err
 	}
 	layout := "2006-01-02T15:04:05Z"
 	updateTime, err = time.Parse(layout, commitDate)
 	if err != nil {
-		return false, updateTime, err
+		return updateTime, err
 	}
 
-	return updateTime.After(saltState.LastUpdate), updateTime, nil
+	return updateTime, nil
 }
