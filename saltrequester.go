@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	dbusPath   = "/org/cacophony/salt_helper"
-	dbusDest   = "org.cacophony.salt_helper"
-	methodBase = "org.cacophony.salt_helper"
+	dbusPath       = "/org/cacophony/salt_helper"
+	dbusDest       = "org.cacophony.salt_helper"
+	methodBase     = "org.cacophony.salt_helper"
+	saltVersionUrl = "https://raw.githubusercontent.com/TheCacophonyProject/salt-version-info/refs/heads/main/salt-version-info.json"
 )
 
 var log = logging.NewLogger("info")
@@ -206,14 +207,14 @@ func UpdateExistsForNodeGroup(nodeGroup string) (bool, time.Time, error) {
 	}
 	saltState, _ := ReadStateFile()
 	log.Printf("Checking for updates for saltops %v branch, last update was %v", branch, saltState.LastUpdate)
-	resp, err := http.Get("https://raw.githubusercontent.com/TheCacophonyProject/salt-version-info/refs/heads/main/salt-version-info.json")
+	resp, err := http.Get(saltVersionUrl)
 
 	if err != nil {
 		return false, updateTime, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, "https://raw.githubusercontent.com/TheCacophonyProject/salt-version-info/refs/heads/main/salt-version-info.json")
+		return false, updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, saltVersionUrl)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
