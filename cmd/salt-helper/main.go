@@ -20,13 +20,9 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
-	"net/url"
 
 	"os"
 	"os/exec"
@@ -258,13 +254,13 @@ func runMain() error {
 		log.Printf("Last update was run at '%s', with nodegroup '%s'", state.LastUpdate.Format("2006-01-02 15:04:05"), nodegroup)
 
 		// Log when the latest software was released.
-		latestUpdateTime, err := GetLatestUpdateTime(nodegroup)
+		_, latestUpdateTime, err := saltrequester.UpdateExistsForNodeGroup(nodegroup)
 		if err != nil {
 			log.Errorf("Error getting latest update time: %v", err)
 			return err
 		}
 		log.Printf("Latest software update was published at '%s', for nodegroup '%s'", latestUpdateTime.Format("2006-01-02 15:04:05"), nodegroup)
-		if state.LastUpdate.Before(*latestUpdateTime) {
+		if state.LastUpdate.Before(latestUpdateTime) {
 			log.Info("Found new update, recommend a salt update.")
 			return nil
 		} else {
@@ -464,94 +460,6 @@ func trackUpdateProgress(s *saltUpdater, stop chan bool) {
 			s.state.UpdateProgressStr = state
 		}
 	}
-}
-
-const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
-
-var nodeGroupToBranch = map[string]string{
-	"tc2-dev":  "dev",
-	"tc2-test": "test",
-	"tc2-prod": "prod",
-	"dev-pis":  "dev",
-	"test-pis": "test",
-	"prod-pis": "prod",
-}
-
-func GetLatestUpdateTime(nodegroup string) (*time.Time, error) {
-	// Check what branch the is used for this nodegroup
-	branch, ok := nodeGroupToBranch[nodegroup]
-	if !ok {
-		err := fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodegroup)
-		log.Errorf(err.Error())
-		return nil, err
-	}
-
-	// Make request to salt repo
-	u, err := url.Parse(saltrepoURL)
-	if err != nil {
-		log.Errorf("Failed to parse salt repo URL: %v", err)
-		return nil, err
-	}
-	params := url.Values{}
-	params.Add("sha", branch)
-	params.Add("per_page", "1")
-	u.RawQuery = params.Encode()
-	req, _ := http.NewRequest("GET", u.String(), nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConns:          5,
-			IdleConnTimeout:       90 * time.Second,
-		},
-	}
-
-	// Send request
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Errorf("Failed to send request: %v", err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Check response
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err := fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, u.String())
-		log.Errorf(err.Error())
-		return nil, err
-	}
-
-	// Parse response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Errorf("Failed to read body: %v", err)
-		return nil, err
-	}
-	var details []interface{}
-	err = json.Unmarshal(body, &details)
-	if err != nil {
-		log.Errorf("Failed to unmarshal body: %v", err)
-		return nil, err
-	}
-	if len(details) == 0 {
-		log.Printf("No updates exists for %v node group", nodegroup)
-		return nil, nil
-	}
-	commitDate := details[0].(map[string]interface{})["commit"].(map[string]interface{})["author"].(map[string]interface{})["date"].(string)
-	layout := "2006-01-02T15:04:05Z"
-	updateTime, err := time.Parse(layout, commitDate)
-	if err != nil {
-		log.Errorf("Failed to parse commit date: %v", err)
-		return nil, err
-	}
-
-	return &updateTime, nil
 }
 
 func (s *saltUpdater) CheckIfUpdateAvailable() bool {
