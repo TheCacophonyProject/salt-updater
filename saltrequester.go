@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 
@@ -18,9 +16,10 @@ import (
 )
 
 const (
-	dbusPath   = "/org/cacophony/salt_helper"
-	dbusDest   = "org.cacophony.salt_helper"
-	methodBase = "org.cacophony.salt_helper"
+	dbusPath       = "/org/cacophony/salt_helper"
+	dbusDest       = "org.cacophony.salt_helper"
+	methodBase     = "org.cacophony.salt_helper"
+	saltVersionUrl = "https://raw.githubusercontent.com/TheCacophonyProject/salt-version-info/refs/heads/main/salt-version-info.json"
 )
 
 var log = logging.NewLogger("info")
@@ -187,81 +186,73 @@ func ReadStateFile() (*SaltState, error) {
 	return saltState, err
 }
 
-// UpdateExists checks if there has been any git updates since the last update time for this minions nodegroup
-// uses github api to view last commit to the repo
 func UpdateExists() (bool, time.Time, error) {
-
 	nodegroupOut, err := os.ReadFile("/etc/cacophony/salt-nodegroup")
 	if err != nil {
 		return false, time.Time{}, err
 	}
-	nodeGroup := string(nodegroupOut)
-	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
-	branch, ok := nodeGroupToBranch[nodeGroup]
-	var updateTime time.Time
-
-	if !ok {
-		return false, updateTime, fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodegroupOut)
-	}
 	saltState, _ := ReadStateFile()
-	log.Printf("Checking for updates for saltops %v branch, last update was %v", branch, saltState.LastUpdate)
 
-	const saltrepoURL = "https://api.github.com/repos/TheCacophonyProject/saltops/commits"
-	u, err := url.Parse(saltrepoURL)
-	if err != nil {
-		return false, updateTime, err
-	}
-	params := url.Values{}
-	params.Add("sha", branch)
-	params.Add("per_page", "1")
-
-	u.RawQuery = params.Encode()
-
-	req, _ := http.NewRequest("GET", u.String(), nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConns:          5,
-			IdleConnTimeout:       90 * time.Second,
-		},
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, updateTime, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, u.String())
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, updateTime, err
-
-	}
-	var details []interface{}
-	err = json.Unmarshal(body, &details)
-	if err != nil {
-		return false, updateTime, err
-	}
-	if len(details) == 0 {
-		log.Printf("No updates exists for %v node group", nodegroupOut)
-		return false, updateTime, nil
-	}
-	commitDate := details[0].(map[string]interface{})["commit"].(map[string]interface{})["author"].(map[string]interface{})["date"].(string)
-	layout := "2006-01-02T15:04:05Z"
-	updateTime, err = time.Parse(layout, commitDate)
+	updateTime, err := GetLatestUpdateTime(string(nodegroupOut))
 	if err != nil {
 		return false, updateTime, err
 	}
 
 	return updateTime.After(saltState.LastUpdate), updateTime, nil
+}
+
+// UpdateExists checks if there has been any git updates since the last update time for this minions nodegroup
+// uses github api to view last commit to the repo
+func GetLatestUpdateTime(nodeGroup string) (time.Time, error) {
+
+	nodeGroup = strings.TrimSuffix(nodeGroup, "\n")
+	branch, ok := nodeGroupToBranch[nodeGroup]
+	var updateTime time.Time
+
+	if !ok {
+		return updateTime, fmt.Errorf("cant find a salt branch  mapping for %v nodegroup", nodeGroup)
+	}
+	log.Printf("Checking for updates for saltops %v branch", branch)
+	resp, err := http.Get(saltVersionUrl)
+
+	if err != nil {
+		return updateTime, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return updateTime, fmt.Errorf("bad update status check %v from url %v", resp.StatusCode, saltVersionUrl)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return updateTime, err
+
+	}
+	var details map[string]interface{}
+	err = json.Unmarshal(body, &details)
+	if err != nil {
+		return updateTime, err
+	}
+
+	var commitDate string
+	if branchDetails, ok := details[branch]; ok {
+		if tc2, ok := branchDetails.(map[string]interface{})["tc2"]; ok {
+			if commitDate, ok = tc2.(map[string]interface{})["commitDate"].(string); !ok {
+				err = fmt.Errorf("could not find commitDate key in json %v", commitDate)
+			}
+		} else {
+			err = fmt.Errorf("could not find tc2 key in json %v", branchDetails)
+		}
+	} else {
+		err = fmt.Errorf("could not find %v key in json %v", branch, details)
+	}
+	if err != nil {
+		return updateTime, err
+	}
+	layout := "2006-01-02T15:04:05Z"
+	updateTime, err = time.Parse(layout, commitDate)
+	if err != nil {
+		return updateTime, err
+	}
+
+	return updateTime, nil
 }
