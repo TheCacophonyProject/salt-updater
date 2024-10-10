@@ -13,6 +13,7 @@ builds:
   - linux
   goarch:
   - arm
+  - arm64
   goarm:
   - "7"
   main: ./cmd/salt-helper
