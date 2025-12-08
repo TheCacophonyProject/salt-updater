@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	"github.com/godbus/dbus"
 	"github.com/godbus/dbus/introspect"
 )
@@ -92,26 +91,13 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 
 func (s service) RunUpdate() *dbus.Error {
 	s.CheckIfUsingOldDbus()
-
-	updateAvailable, updateTime, err := saltrequester.UpdateExists()
-	if err != nil {
-		log.Printf("Error checking if update exists %v will run salt state", err)
-	}
-	//if we have an error lets just run salt update
-	if err == nil && !updateAvailable {
-		s.saltUpdater.state.UpdateProgressPercentage = 100
-		s.saltUpdater.state.UpdateProgressStr = "No update available"
-		log.Println("No update available")
-		return nil
-	}
-
-	go s.saltUpdater.runUpdate(updateTime)
+	go s.saltUpdater.checkAndRunUpdate(false)
 	return nil
 }
 
 func (s service) ForceUpdate() *dbus.Error {
 	s.CheckIfUsingOldDbus()
-	go s.saltUpdater.runUpdate(time.Now())
+	go s.saltUpdater.checkAndRunUpdate(true)
 	return nil
 }
 

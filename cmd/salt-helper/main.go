@@ -35,15 +35,15 @@ import (
 	goconfig "github.com/TheCacophonyProject/go-config"
 	"github.com/TheCacophonyProject/go-utils/logging"
 	"github.com/TheCacophonyProject/go-utils/saltutil"
+	"github.com/TheCacophonyProject/modemd/connrequester"
 	"github.com/TheCacophonyProject/modemd/modemlistener"
 	saltrequester "github.com/TheCacophonyProject/salt-updater"
 	arg "github.com/alexflint/go-arg"
-	"github.com/sirupsen/logrus"
 )
 
 var version = "<not set>"
 
-var log *logrus.Logger
+var log *logging.Logger
 
 const configDir = goconfig.DefaultConfigDir
 const minionLogFile = "/var/log/salt/minion"
@@ -467,11 +467,55 @@ func (s *saltUpdater) CheckIfUpdateAvailable() bool {
 	return err == nil
 }
 
+func (s *saltUpdater) checkAndRunUpdate(force bool) error {
+
+	// Wait until we have a connection to the internet
+	cr := connrequester.NewConnectionRequester()
+	log.Info("Requesting internet connection for a salt update.")
+	cr.Start()
+	defer cr.Stop()
+	err := cr.WaitUntilUpLoop(time.Minute*2, time.Minute, 1)
+	if err != nil {
+		log.Error("Error waiting for internet connection: " + err.Error())
+		if force {
+			log.Info("Salt update was forced so it will try to update even though the internet connection check failed.")
+			s.runUpdate(time.Now())
+		}
+		return err
+	}
+	log.Info("Internet connection made")
+
+	// Force running an update by setting the latest release time to now.
+	if force {
+		s.runUpdate(time.Now())
+		return nil
+	}
+
+	// Check if there is a new update available.
+	updateAvailable, updateTime, err := saltrequester.UpdateExists()
+	if err != nil {
+		log.Error("Error checking if salt update exists:", err)
+	}
+
+	// Run update if there is one available
+	if updateAvailable {
+		s.runUpdate(updateTime)
+		return nil
+	}
+
+	// No update available, update the state and return
+	log.Info("No update available")
+	s.state.UpdateProgressPercentage = 100
+	s.state.UpdateProgressStr = "No update available"
+	return nil
+}
+
 func (s *saltUpdater) runUpdate(updateTime time.Time) {
 	if s.state.RunningUpdate {
 		log.Println("Already running salt update")
 		return
 	}
+	log.Info("Running salt update")
 
 	stopTrackingUpdate := make(chan bool)
 	defer func() { stopTrackingUpdate <- true }()
