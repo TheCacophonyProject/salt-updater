@@ -193,6 +193,12 @@ func UpdateExists() (bool, time.Time, error) {
 	}
 	saltState, _ := ReadStateFile()
 
+	if saltState.LastUpdate.After(time.Now()) {
+		log.Errorf("Last update time is in the future. Last update time: %v Current time: %v", saltState.LastUpdate, time.Now())
+		// Something is wrong with the update time so we will just say there is an update available for now
+		return true, time.Now(), nil
+	}
+
 	updateTime, err := GetLatestUpdateTime(string(nodegroupOut))
 	if err != nil {
 		return false, updateTime, err
