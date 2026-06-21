@@ -173,8 +173,8 @@ func runMain() error {
 					log.Error("Error running salt update: " + err.Error())
 				}
 			}
+			log.Info("Will check for an update again in 24 hours")
 			time.Sleep(24 * time.Hour)
-
 		}
 	}
 
