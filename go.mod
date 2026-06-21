@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/TheCacophonyProject/event-reporter/v3 v3.8.0
-	github.com/TheCacophonyProject/go-config v1.18.0
+	github.com/TheCacophonyProject/go-config v1.34.1
 	github.com/TheCacophonyProject/go-utils v0.1.3
 	github.com/TheCacophonyProject/modemd v1.16.0
 	github.com/alexflint/go-arg v1.4.2
