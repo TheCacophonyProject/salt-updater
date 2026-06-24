@@ -405,16 +405,14 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime
 		return nil, err
 	}
 	s.runningCommand = args[0]
-	// // Don't want multiple calls running at the same time
-	// if s.state.RunningUpdate {
-	// 	return nil, errors.New("failed to run salt call as one is already running")
-	// }
 
 	log.Printf("Starting salt call: %v", args)
 	s.state.RunningUpdate = updateCall
 	s.state.RunningArgs = args
 	out, err := exec.Command("salt-call", args...).CombinedOutput()
-	s.state.RunningUpdate = false
+	if updateCall {
+		s.state.RunningUpdate = false
+	}
 	s.state.RunningArgs = nil
 	log.Printf("Finished salt call: %v", args)
 
@@ -433,7 +431,8 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime
 	}
 	s.state.LastCallArgs = args
 	err = saltrequester.WriteStateFile(s.state)
-	// set this here to stop a race issue for writing to the file
+	// set this here to stop a race issue for writing to the file, where a call could set RunningUpdate to true
+	// and then crash causing the state file to always say that an update is running
 	s.runningCommand = ""
 	if err != nil {
 		log.Printf("failed to save salt JSON to file: %v\n", err)
