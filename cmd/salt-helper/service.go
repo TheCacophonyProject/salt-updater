@@ -89,14 +89,41 @@ func (s service) IsRunning() (bool, *dbus.Error) {
 	return s.saltUpdater.state.RunningUpdate, nil
 }
 
+// LastError will return the message of the last error encountered, or an
+// empty string if there hasn't been one.
+func (s service) LastError() *dbus.Error {
+	s.CheckIfUsingOldDbus()
+	if s.saltUpdater.lastError == nil {
+		return nil
+	}
+	return &dbus.Error{
+		Name: "LastError",
+		Body: []interface{}{s.saltUpdater.lastError.Error()},
+	}
+}
+
 func (s service) RunUpdate() *dbus.Error {
 	s.CheckIfUsingOldDbus()
+	err := s.saltUpdater.canRunSalt(true)
+	if err != nil {
+		return &dbus.Error{
+			Name: "SaltError",
+			Body: []interface{}{s.saltUpdater.lastError.Error()},
+		}
+	}
 	go s.saltUpdater.checkAndRunUpdate(false)
 	return nil
 }
 
 func (s service) ForceUpdate() *dbus.Error {
 	s.CheckIfUsingOldDbus()
+	err := s.saltUpdater.canRunSalt(true)
+	if err != nil {
+		return &dbus.Error{
+			Name: "SaltError",
+			Body: []interface{}{s.saltUpdater.lastError.Error()},
+		}
+	}
 	go s.saltUpdater.checkAndRunUpdate(true)
 	return nil
 }
@@ -104,13 +131,13 @@ func (s service) ForceUpdate() *dbus.Error {
 // RunPing will send a test ping to the salt server
 func (s service) RunPing() *dbus.Error {
 	s.CheckIfUsingOldDbus()
-	s.saltUpdater.runSaltCall([]string{"test.ping"}, false, time.Now())
+	s.saltUpdater.runSaltCall([]string{"test.ping", "--timeout", "60"}, false, time.Now())
 	return nil
 }
 
 func (s service) RunPingSync() ([]byte, *dbus.Error) {
 	s.CheckIfUsingOldDbus()
-	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false, time.Now())
+	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping", "--timeout", "60"}, false, time.Now())
 	if err != nil {
 		return nil, makeDbusError("RunPingSync", s.dbusName, err)
 	}

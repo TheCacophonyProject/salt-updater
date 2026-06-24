@@ -79,7 +79,38 @@ func procArgs() Args {
 }
 
 type saltUpdater struct {
-	state *saltrequester.SaltState
+	state          *saltrequester.SaltState
+	runningCommand string
+	lastError      error
+}
+
+// SaltCommandErrorReason describes why a SaltCommandError occurred.
+type SaltCommandErrorReason int
+
+const (
+	UpdateAlreadyRunning SaltCommandErrorReason = iota
+	CommandAlreadyRunning
+)
+
+func (r SaltCommandErrorReason) String() string {
+	switch r {
+	case UpdateAlreadyRunning:
+		return "update already running"
+	case CommandAlreadyRunning:
+		return "command already running"
+	default:
+		return "unknown salt command error"
+	}
+}
+
+// SaltCommandError is returned when a salt command can't be run because of
+// the current state of the saltUpdater.
+type SaltCommandError struct {
+	Reason SaltCommandErrorReason
+}
+
+func (e *SaltCommandError) Error() string {
+	return e.Reason.String()
 }
 
 var minionID string
@@ -163,14 +194,25 @@ func runMain() error {
 			}
 			log.Info("Grains updated")
 		}
-
+		var commandAlreadyRunning bool
 		for {
+			commandAlreadyRunning = false
 			// Check for update every 24 hours
 			err := saltrequester.RunUpdate()
 			if err != nil {
 				log.Error("Error running salt update: " + err.Error())
+				if err.Error() == CommandAlreadyRunning.String() {
+					log.Println("Salt update was skipped because another salt command is already running")
+					commandAlreadyRunning = true
+				}
 			}
-			time.Sleep(24 * time.Hour)
+			if commandAlreadyRunning {
+				log.Println("Trying update again in one minute as command already running")
+				time.Sleep(1 * time.Minute)
+			} else {
+				log.Println("Trying to update again in 24 hours")
+				time.Sleep(24 * time.Hour)
+			}
 		}
 	}
 
@@ -343,15 +385,33 @@ func runDbus() (*saltrequester.SaltState, error) {
 	}
 	return saltState, err
 }
+func (s *saltUpdater) canRunSalt(updateCall bool) error {
+	if s.runningCommand != "" {
+		var err error
+		if s.state.RunningUpdate && updateCall {
+			err = &SaltCommandError{Reason: UpdateAlreadyRunning}
 
-func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime time.Time) (*saltrequester.SaltState, error) {
-	// Don't want multiple calls running at the same time
-	if s.state.RunningUpdate {
-		return nil, errors.New("failed to run salt call as one is already running")
+		} else {
+			err = &SaltCommandError{Reason: CommandAlreadyRunning}
+		}
+		s.lastError = err
+		return err
 	}
+	return nil
+}
+func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime time.Time) (*saltrequester.SaltState, error) {
+	var err = s.canRunSalt(updateCall)
+	if err != nil {
+		return nil, err
+	}
+	s.runningCommand = args[0]
+	// // Don't want multiple calls running at the same time
+	// if s.state.RunningUpdate {
+	// 	return nil, errors.New("failed to run salt call as one is already running")
+	// }
 
 	log.Printf("Starting salt call: %v", args)
-	s.state.RunningUpdate = true
+	s.state.RunningUpdate = updateCall
 	s.state.RunningArgs = args
 	out, err := exec.Command("salt-call", args...).CombinedOutput()
 	s.state.RunningUpdate = false
@@ -372,8 +432,9 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime
 		s.state.LastCallNodegroup = nodegroup
 	}
 	s.state.LastCallArgs = args
-
 	err = saltrequester.WriteStateFile(s.state)
+	// set this here to stop a race issue for writing to the file
+	s.runningCommand = ""
 	if err != nil {
 		log.Printf("failed to save salt JSON to file: %v\n", err)
 	}
@@ -388,9 +449,6 @@ func (s *saltUpdater) runSaltCallSync(args []string, updateCall bool, updateTime
 }
 
 func (s *saltUpdater) runSaltCall(args []string, updateCall bool, updateTime time.Time) {
-	if s.state.RunningUpdate {
-		return
-	}
 	go func(s *saltUpdater) {
 		s.runSaltCallSync(args, updateCall, updateTime)
 	}(s)
@@ -511,10 +569,6 @@ func (s *saltUpdater) checkAndRunUpdate(force bool) error {
 }
 
 func (s *saltUpdater) runUpdate(updateTime time.Time) {
-	if s.state.RunningUpdate {
-		log.Println("Already running salt update")
-		return
-	}
 	log.Info("Running salt update")
 
 	stopTrackingUpdate := make(chan bool)
@@ -634,7 +688,7 @@ func (s *saltUpdater) modemConnectedListener() {
 		emptyChannel(modemConnectSignal)
 		<-modemConnectSignal
 		log.Println("Modem connected.")
-		s.runSaltCall([]string{"test.ping"}, false, time.Now())
+		s.runSaltCall([]string{"test.ping", "--timeout", "60"}, false, time.Now())
 	}
 }
 
