@@ -104,13 +104,13 @@ func (s service) ForceUpdate() *dbus.Error {
 // RunPing will send a test ping to the salt server
 func (s service) RunPing() *dbus.Error {
 	s.CheckIfUsingOldDbus()
-	s.saltUpdater.runSaltCall([]string{"test.ping"}, false, time.Now())
+	s.saltUpdater.runSaltCall([]string{"test.ping", "--timeout", "60"}, false, time.Now())
 	return nil
 }
 
 func (s service) RunPingSync() ([]byte, *dbus.Error) {
 	s.CheckIfUsingOldDbus()
-	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping"}, false, time.Now())
+	state, err := s.saltUpdater.runSaltCallSync([]string{"test.ping", "--timeout", "60"}, false, time.Now())
 	if err != nil {
 		return nil, makeDbusError("RunPingSync", s.dbusName, err)
 	}
