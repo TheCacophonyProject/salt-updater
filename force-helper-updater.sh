@@ -1,8 +1,8 @@
 #!/bin/bash
 # this is a script to fix an issue in salt-updater 0.9.0 which may cause salt updates to not occur
-if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false"; then
-    result=True
-    echo "Not running update"
+# not checking this for hibiscus coast as likely to fail
+# if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false"; then
+    echo "Installing salt-updater"
 
     version=$(dpkg -s tc2-agent | grep '^Version:' | awk '{print $2}')
     echo "Tc2 agent version is $version"
@@ -12,6 +12,6 @@ if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false"; then
         sudo dpkg -i salt-updater_0.9.1_arm64.deb
         rm salt-updater_0.9.1_arm64.deb
     fi
-else
-    echo "Update is running so not forcing salt-updater update"
-fi
+# else
+#     echo "Update is running so not forcing salt-updater update"
+# fi
