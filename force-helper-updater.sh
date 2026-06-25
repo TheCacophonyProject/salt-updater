@@ -1,6 +1,6 @@
 #!/bin/bash
-
-if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false" && [ $(date -d "$(cat /etc/cacophony/last-salt-update)" +%s) -gt $(date -d "2026-06-25T00:00:00+12:00" +%s) ]; then
+# this is a script to fix an issue in salt-updater 0.9.0 which may cause salt updates to not occur
+if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false"; then
     result=True
     echo "Not running update"
 
@@ -12,4 +12,6 @@ if sudo salt-helper state 2>&1 | grep -q "RunningUpdate:false" && [ $(date -d "$
         sudo dpkg -i salt-updater_0.9.1_arm64.deb
         rm salt-updater_0.9.1_arm64.deb
     fi
+else
+    echo "Update is running so not forcing salt-updater update"
 fi
