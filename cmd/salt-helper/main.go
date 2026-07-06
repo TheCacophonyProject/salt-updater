@@ -642,7 +642,6 @@ func (s *saltUpdater) modemConnectedListener() {
 		emptyChannel(modemConnectSignal)
 		<-modemConnectSignal
 		log.Println("Modem connected.")
-		s.runSaltCall([]string{"test.ping"}, false, time.Now())
 	}
 }
 
