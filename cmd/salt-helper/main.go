@@ -165,11 +165,15 @@ func runMain() error {
 		}
 
 		for {
-			// Check for update every 24 hours
-			err := saltrequester.RunUpdate()
-			if err != nil {
-				log.Error("Error running salt update: " + err.Error())
+			autoUpdate, _ := isAutoUpdateOn()
+			if autoUpdate {
+				// Check for update every 24 hours
+				err := saltrequester.RunUpdate()
+				if err != nil {
+					log.Error("Error running salt update: " + err.Error())
+				}
 			}
+			log.Info("Will check for an update again in 24 hours")
 			time.Sleep(24 * time.Hour)
 		}
 	}
@@ -197,7 +201,11 @@ func runMain() error {
 			log.Errorf("Failed to enable auto update: %v", err)
 			return err
 		}
-		log.Info("Auto update has been enabled")
+		log.Info("Auto update has been enabled, running an update")
+		err = saltrequester.RunUpdate()
+		if err != nil {
+			log.Error("Error running salt update: " + err.Error())
+		}
 		return nil
 	}
 
